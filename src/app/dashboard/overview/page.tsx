@@ -1,153 +1,435 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import toast from 'react-hot-toast';
 
-interface Sale {
+interface InvoiceRecord {
+  date: string;
+  total_amount: number;
+  company_id: string;
+  companies?: {
+    name: string;
+  } | null;
+}
+
+interface SaleRecord {
   purchase_date: string;
   total_price: number;
 }
 
-interface ChartData {
+interface CombinedData {
   date: string;
+  purchases: number;
   sales: number;
 }
 
+interface CompanyData {
+  name: string;
+  purchases: number;
+  sales: number;
+  total: number;
+}
+
+interface TooltipProps {
+  active?: boolean;
+  payload?: Array<{
+    value: number;
+    payload: CombinedData;
+  }>;
+  label?: string;
+}
+
+interface PieTooltipProps {
+  active?: boolean;
+  payload?: Array<{
+    value: number;
+    payload: CompanyData;
+  }>;
+}
+
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
+
 export default function Overview() {
-  const [salesData, setSalesData] = useState<ChartData[]>([]);
+  const [combinedData, setCombinedData] = useState<CombinedData[]>([]);
+  const [companyData, setCompanyData] = useState<CompanyData[]>([]);
+  const [totalPurchases, setTotalPurchases] = useState<number>(0);
   const [totalSales, setTotalSales] = useState<number>(0);
-  const [growthPercentage, setGrowthPercentage] = useState<number | null>(null);
+  const [purchaseGrowth, setPurchaseGrowth] = useState<number | null>(null);
+  const [salesGrowth, setSalesGrowth] = useState<number | null>(null);
+  const [totalInvoices, setTotalInvoices] = useState<number>(0);
+  const [avgInvoiceValue, setAvgInvoiceValue] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    fetchSalesData();
+    fetchOverviewData();
   }, []);
 
-  const fetchSalesData = async () => {
+  const fetchOverviewData = async () => {
     try {
       setIsLoading(true);
-      const { data, error } = await supabase
+      
+      // Fetch invoices (purchases)
+      const { data: invoicesData, error: invoicesError } = await supabase
+        .from('invoices')
+        .select(`
+          date,
+          total_amount,
+          company_id,
+          companies (
+            name
+          )
+        `)
+        .order('date', { ascending: true });
+
+      if (invoicesError) throw invoicesError;
+
+      // Fetch sales
+      const { data: salesData, error: salesError } = await supabase
         .from('sales')
         .select('purchase_date, total_price')
         .order('purchase_date', { ascending: true });
 
-      if (error) throw error;
+      if (salesError) throw salesError;
 
-      const aggregated = data.reduce((acc: { [key: string]: number }, sale: Sale) => {
+      const purchases = (invoicesData || []) as InvoiceRecord[];
+      const sales = (salesData || []) as SaleRecord[];
+
+      // Calculate totals
+      const totalPurchaseAmount = purchases.reduce((sum, invoice) => sum + invoice.total_amount, 0);
+      const totalSaleAmount = sales.reduce((sum, sale) => sum + sale.total_price, 0);
+      const invoiceCount = purchases.length;
+      const avgValue = invoiceCount > 0 ? totalPurchaseAmount / invoiceCount : 0;
+
+      // Aggregate purchases by date
+      const purchasesByDate = purchases.reduce<Record<string, number>>((acc, invoice) => {
+        const date = invoice.date;
+        acc[date] = (acc[date] || 0) + invoice.total_amount;
+        return acc;
+      }, {});
+
+      // Aggregate sales by date
+      const salesByDate = sales.reduce<Record<string, number>>((acc, sale) => {
         const date = sale.purchase_date;
         acc[date] = (acc[date] || 0) + sale.total_price;
         return acc;
       }, {});
 
-      const chartData = Object.keys(aggregated)
-        .map((date) => ({ date, sales: aggregated[date] }))
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      // Get all unique dates and create combined data
+      const allDates = Array.from(new Set([
+        ...Object.keys(purchasesByDate),
+        ...Object.keys(salesByDate)
+      ])).sort();
 
-      const total = data.reduce((sum: number, sale: Sale) => sum + sale.total_price, 0);
+      const chartData = allDates.map(date => ({
+        date,
+        purchases: purchasesByDate[date] || 0,
+        sales: salesByDate[date] || 0
+      }));
 
-      let growth = null;
+      // Aggregate by company (purchases only since sales don't have company info)
+      const aggregatedByCompany = purchases.reduce<Record<string, { name: string; purchases: number }>>((acc, invoice) => {
+        const companyId = invoice.company_id;
+        const companyName = invoice.companies && typeof invoice.companies === 'object' && 'name' in invoice.companies 
+          ? invoice.companies.name 
+          : 'Unknown Company';
+        
+        if (!acc[companyId]) {
+          acc[companyId] = { name: companyName, purchases: 0 };
+        }
+        acc[companyId].purchases += invoice.total_amount;
+        return acc;
+      }, {});
+
+      const companyChartData = Object.values(aggregatedByCompany)
+        .map(company => ({
+          ...company,
+          sales: 0, // Sales data doesn't have company breakdown in current schema
+          total: company.purchases
+        }))
+        .sort((a, b) => b.total - a.total);
+
+      // Calculate growth percentages
+      let pGrowth = null;
+      let sGrowth = null;
+      
       if (chartData.length > 1) {
+        const firstPurchases = chartData[0].purchases;
+        const lastPurchases = chartData[chartData.length - 1].purchases;
         const firstSales = chartData[0].sales;
         const lastSales = chartData[chartData.length - 1].sales;
-        growth = ((lastSales - firstSales) / firstSales) * 100;
+        
+        if (firstPurchases > 0) {
+          pGrowth = ((lastPurchases - firstPurchases) / firstPurchases) * 100;
+        }
+        if (firstSales > 0) {
+          sGrowth = ((lastSales - firstSales) / firstSales) * 100;
+        }
       }
 
-      setSalesData(chartData);
-      setTotalSales(total);
-      setGrowthPercentage(growth);
+      setCombinedData(chartData);
+      setCompanyData(companyChartData);
+      setTotalPurchases(totalPurchaseAmount);
+      setTotalSales(totalSaleAmount);
+      setTotalInvoices(invoiceCount);
+      setAvgInvoiceValue(avgValue);
+      setPurchaseGrowth(pGrowth);
+      setSalesGrowth(sGrowth);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      toast.error(`Error fetching sales data: ${message}`);
+      toast.error(`Error fetching overview data: ${message}`);
     } finally {
       setIsLoading(false);
     }
   };
 
+  const CustomTooltip = ({ active, payload, label }: TooltipProps) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
+          <p className="font-medium">{`Date: ${new Date(label || '').toLocaleDateString('en-IN')}`}</p>
+          <p className="text-blue-600">
+            {`Purchases: ₹${data.purchases?.toLocaleString('en-IN') || 0}`}
+          </p>
+          <p className="text-green-600">
+            {`Sales: ₹${data.sales?.toLocaleString('en-IN') || 0}`}
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  const PieTooltip = ({ active, payload }: PieTooltipProps) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
+          <p className="font-medium">{data.name}</p>
+          <p className="text-blue-600">
+            {`Purchases: ₹${data.purchases.toLocaleString('en-IN')}`}
+          </p>
+          <p className="text-gray-500 text-sm">
+            {`${((data.purchases / totalPurchases) * 100).toFixed(1)}% of total purchases`}
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-teal-50 via-blue-50 to-cyan-50 p-4 md:p-6">
-      <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-2xl p-6 md:p-8">
+      <div className="max-w-7xl mx-auto bg-white rounded-2xl shadow-2xl p-6 md:p-8">
         {/* Header */}
-        <div className="text-center mb-8">
+        <div className="mb-8">
           <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-teal-600 to-blue-600 bg-clip-text text-transparent">
-            Lakshmi Priya Fertilizers
+            Business Overview
           </h1>
-          <p className="text-gray-600 mt-2">Company Overview</p>
+          <p className="text-gray-600 mt-2">Comprehensive analysis of purchases and sales performance</p>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <div className="bg-gradient-to-r from-teal-50 to-blue-50 p-6 rounded-2xl border border-teal-100">
-            <h2 className="text-xl font-semibold text-gray-800 mb-2">Total Sales</h2>
-            <p className="text-3xl font-bold text-teal-600">₹{totalSales.toFixed(2)}</p>
+            <h2 className="text-lg font-semibold text-gray-800 mb-2">Total Purchases</h2>
+            <p className="text-2xl font-bold text-teal-600">₹{totalPurchases.toLocaleString('en-IN')}</p>
+            {purchaseGrowth !== null && (
+              <p className={`text-sm mt-1 ${purchaseGrowth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {purchaseGrowth >= 0 ? '+' : ''}{purchaseGrowth.toFixed(1)}% growth
+              </p>
+            )}
           </div>
-          <div className="bg-gradient-to-r from-teal-50 to-blue-50 p-6 rounded-2xl border border-teal-100">
-            <h2 className="text-xl font-semibold text-gray-800 mb-2">Sales Growth</h2>
-            <p className="text-3xl font-bold">
-              {growthPercentage !== null ? (
-                <span className={growthPercentage >= 0 ? 'text-green-600' : 'text-red-600'}>
-                  {growthPercentage >= 0 ? '+' : ''}{growthPercentage.toFixed(2)}%
-                </span>
-              ) : (
-                <span className="text-gray-500">N/A</span>
-              )}
+          
+          <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-6 rounded-2xl border border-green-100">
+            <h2 className="text-lg font-semibold text-gray-800 mb-2">Total Sales</h2>
+            <p className="text-2xl font-bold text-green-600">₹{totalSales.toLocaleString('en-IN')}</p>
+            {salesGrowth !== null && (
+              <p className={`text-sm mt-1 ${salesGrowth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {salesGrowth >= 0 ? '+' : ''}{salesGrowth.toFixed(1)}% growth
+              </p>
+            )}
+          </div>
+          
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-2xl border border-blue-100">
+            <h2 className="text-lg font-semibold text-gray-800 mb-2">Net Margin</h2>
+            <p className="text-2xl font-bold text-blue-600">₹{(totalSales - totalPurchases).toLocaleString('en-IN')}</p>
+            <p className="text-sm text-gray-600 mt-1">
+              {totalPurchases > 0 ? `${(((totalSales - totalPurchases) / totalPurchases) * 100).toFixed(1)}% ROI` : 'N/A'}
             </p>
+          </div>
+          
+          <div className="bg-gradient-to-r from-purple-50 to-pink-50 p-6 rounded-2xl border border-purple-100">
+            <h2 className="text-lg font-semibold text-gray-800 mb-2">Avg Invoice</h2>
+            <p className="text-2xl font-bold text-purple-600">₹{Math.round(avgInvoiceValue).toLocaleString('en-IN')}</p>
+            <p className="text-sm text-gray-600 mt-1">{totalInvoices} invoices</p>
           </div>
         </div>
 
-        {/* Sales Chart */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-          <h2 className="text-2xl font-bold text-gray-800 mb-6">Sales Trend</h2>
+        {/* Main Chart */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-8">
+          <h2 className="text-2xl font-bold text-gray-800 mb-6">Purchase vs Sales Trend</h2>
           
           {isLoading ? (
             <div className="flex justify-center items-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
-              <span className="ml-2 text-gray-600">Loading sales data...</span>
+              <span className="ml-2 text-gray-600">Loading data...</span>
             </div>
-          ) : salesData.length === 0 ? (
+          ) : combinedData.length === 0 ? (
             <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
-              <p className="text-gray-500">No sales data available yet.</p>
+              <p className="text-gray-500">No data available yet.</p>
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={400}>
-              <LineChart data={salesData}>
+              <AreaChart data={combinedData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                 <XAxis 
                   dataKey="date" 
-                  tick={{ fill: '#6b7280' }}
+                  tick={{ fill: '#6b7280', fontSize: 12 }}
                   tickFormatter={(value) => new Date(value).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
                 />
                 <YAxis 
-                  tick={{ fill: '#6b7280' }}
-                  tickFormatter={(value) => `₹${value}`}
+                  tick={{ fill: '#6b7280', fontSize: 12 }}
+                  tickFormatter={(value) => `₹${(value / 1000).toFixed(0)}K`}
                 />
-                <Tooltip 
-                  formatter={(value) => [`₹${value}`, 'Sales']}
-                  labelFormatter={(label) => `Date: ${new Date(label).toLocaleDateString('en-IN')}`}
-                  contentStyle={{ 
-                    backgroundColor: 'white', 
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '0.5rem'
-                  }}
-                />
+                <Tooltip content={<CustomTooltip />} />
                 <Legend />
-                <Line
+                <Area
+                  type="monotone"
+                  dataKey="purchases"
+                  stackId="1"
+                  stroke="#3B82F6"
+                  fill="#3B82F6"
+                  fillOpacity={0.6}
+                  name="Purchases (₹)"
+                />
+                <Area
                   type="monotone"
                   dataKey="sales"
-                  stroke="#3B82F6"
-                  strokeWidth={3}
-                  dot={{ fill: '#3B82F6', strokeWidth: 2, r: 4 }}
-                  activeDot={{ r: 6, fill: '#1D4ED8' }}
+                  stackId="2"
+                  stroke="#10B981"
+                  fill="#10B981"
+                  fillOpacity={0.6}
                   name="Sales (₹)"
                 />
-              </LineChart>
+              </AreaChart>
             </ResponsiveContainer>
           )}
         </div>
+
+        {/* Charts Container */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Purchase Distribution by Company */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+            <h2 className="text-2xl font-bold text-gray-800 mb-6">Purchase Distribution by Company</h2>
+            
+            {isLoading ? (
+              <div className="flex justify-center items-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
+                <span className="ml-2 text-gray-600">Loading company data...</span>
+              </div>
+            ) : companyData.length === 0 ? (
+              <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+                <p className="text-gray-500">No company data available yet.</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={companyData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="purchases"
+                  >
+                    {companyData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<PieTooltip />} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+
+          {/* Performance Metrics */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+            <h2 className="text-2xl font-bold text-gray-800 mb-6">Key Performance Metrics</h2>
+            
+            <div className="space-y-4">
+              <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+                <span className="text-gray-700 font-medium">Gross Profit Margin</span>
+                <span className="text-lg font-bold text-green-600">
+                  {totalPurchases > 0 ? `${(((totalSales - totalPurchases) / totalSales) * 100).toFixed(1)}%` : 'N/A'}
+                </span>
+              </div>
+              
+              <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+                <span className="text-gray-700 font-medium">Return on Investment</span>
+                <span className="text-lg font-bold text-blue-600">
+                  {totalPurchases > 0 ? `${(((totalSales - totalPurchases) / totalPurchases) * 100).toFixed(1)}%` : 'N/A'}
+                </span>
+              </div>
+              
+              <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+                <span className="text-gray-700 font-medium">Active Suppliers</span>
+                <span className="text-lg font-bold text-purple-600">{companyData.length}</span>
+              </div>
+              
+              <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+                <span className="text-gray-700 font-medium">Purchase/Sales Ratio</span>
+                <span className="text-lg font-bold text-orange-600">
+                  {totalSales > 0 ? `${(totalPurchases / totalSales).toFixed(2)}` : 'N/A'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Company Rankings Table */}
+        {companyData.length > 0 && (
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mt-8">
+            <h2 className="text-2xl font-bold text-gray-800 mb-6">Top Suppliers by Purchase Volume</h2>
+            <div className="overflow-x-auto rounded-2xl border border-gray-200">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gradient-to-r from-teal-600 to-blue-600 text-white">
+                    <th className="px-6 py-4 text-left font-semibold">Rank</th>
+                    <th className="px-6 py-4 text-left font-semibold">Company Name</th>
+                    <th className="px-6 py-4 text-right font-semibold">Total Purchases</th>
+                    <th className="px-6 py-4 text-right font-semibold">% of Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {companyData.map((company, index) => (
+                    <tr key={company.name} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4 font-medium text-gray-900">#{index + 1}</td>
+                      <td className="px-6 py-4 text-gray-900 font-medium">{company.name}</td>
+                      <td className="px-6 py-4 text-right font-semibold text-teal-600">
+                        ₹{company.purchases.toLocaleString('en-IN')}
+                      </td>
+                      <td className="px-6 py-4 text-right text-gray-600">
+                        {((company.purchases / totalPurchases) * 100).toFixed(1)}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
+

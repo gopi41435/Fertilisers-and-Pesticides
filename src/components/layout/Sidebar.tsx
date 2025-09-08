@@ -40,7 +40,7 @@ export const Sidebar = () => {
 
   return (
     <aside className="fixed top-0 left-0 h-screen w-64 bg-white shadow-lg border-r border-gray-200 flex flex-col">
-      <div className="p-6 border-b border-gray-200">
+      <div className="p-5 border-b border-gray-200">
         <h1 className="text-xl font-bold text-gray-800 flex items-center">
           <Zap className="h-6 w-6 mr-2 text-blue-600" />
           Admin Dashboard
