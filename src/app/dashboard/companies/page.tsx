@@ -72,11 +72,11 @@ export default function Companies() {
     <div className="min-h-screen bg-gradient-to-br from-teal-50 via-blue-50 to-cyan-50 p-4 md:p-6">
       <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-2xl p-6 md:p-8">
         {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-teal-600 to-blue-600 bg-clip-text text-transparent">
-            Lakshmi Priya Fertilizers
+        <div className="  mb-8">
+          <h1 className="text-3xl md:text-4xl  font-bold bg-gradient-to-r from-teal-600 to-blue-600 bg-clip-text text-transparent">
+            Company Management
           </h1>
-          <p className="text-gray-600 mt-2">Company Management</p>
+          
         </div>
 
         {/* Add Company Form */}
