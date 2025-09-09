@@ -273,23 +273,22 @@ export default function Invoices() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-teal-50 via-blue-50 to-cyan-50 p-4 md:p-6">
-      <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-2xl p-6 md:p-8">
+    <div className="min-h-screen bg-gradient-to-br from-teal-50 via-blue-50 to-cyan-50 p-2 sm:p-4 md:p-6">
+      <div className="max-w-7xl mx-auto bg-white rounded-xl sm:rounded-2xl shadow-lg sm:shadow-2xl p-4 sm:p-6 md:p-8">
         {/* Header */}
-        <div className=" mb-8">
-          <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-teal-600 to-blue-600 bg-clip-text text-transparent">
+        <div className="mb-4 sm:mb-6 md:mb-8">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-teal-600 to-blue-600 bg-clip-text text-transparent">
             Invoice Management
           </h1>
-           
         </div>
 
         {/* Add Invoice Form */}
-        <div className="bg-gradient-to-r from-teal-50 to-blue-50 p-6 rounded-2xl mb-8">
-          <h2 className="text-2xl font-bold text-gray-800 mb-6">Create New Invoice</h2>
+        <div className="bg-gradient-to-r from-teal-50 to-blue-50 p-4 sm:p-6 rounded-xl sm:rounded-2xl mb-4 sm:mb-6 md:mb-8">
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-4 sm:mb-6">Create New Invoice</h2>
           
-          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Company *</label>
+              <label className="block text-xs sm:text-sm md:text-sm font-semibold text-gray-700 mb-2">Company *</label>
               <Select
                 value={companies.find(c => c.id === formData.company_id) ? { value: formData.company_id, label: companies.find(c => c.id === formData.company_id)?.name } : null}
                 onChange={(selected) => setFormData({ ...formData, company_id: selected ? selected.value : '' })}
@@ -297,33 +296,34 @@ export default function Invoices() {
                 isSearchable
                 placeholder="Search and select a company..."
                 classNamePrefix="react-select"
+                className="w-full text-xs sm:text-sm"
                 required
               />
             </div>
             
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Invoice Number (Auto-generated)</label>
+              <label className="block text-xs sm:text-sm md:text-sm font-semibold text-gray-700 mb-2">Invoice Number (Auto-generated)</label>
               <input
                 type="text"
                 value={formData.invoice_number}
                 readOnly
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl bg-gray-100 cursor-not-allowed"
+                className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl bg-gray-100 cursor-not-allowed text-xs sm:text-sm"
               />
             </div>
             
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Date *</label>
+              <label className="block text-xs sm:text-sm md:text-sm font-semibold text-gray-700 mb-2">Date *</label>
               <input
                 type="date"
                 value={formData.date}
                 onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
+                className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all text-xs sm:text-sm"
                 required
               />
             </div>
             
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Total Amount (₹) *</label>
+              <label className="block text-xs sm:text-sm md:text-sm font-semibold text-gray-700 mb-2">Total Amount (₹) *</label>
               <input
                 type="number"
                 step="0.01"
@@ -331,16 +331,16 @@ export default function Invoices() {
                 value={formData.total_amount}
                 onChange={(e) => setFormData({ ...formData, total_amount: e.target.value })}
                 placeholder="0.00"
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
+                className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all text-xs sm:text-sm"
                 required
               />
             </div>
             
-            <div className="md:col-span-2">
+            <div className="sm:col-span-2">
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="bg-gradient-to-r from-teal-600 to-blue-600 hover:from-teal-700 hover:to-blue-700 text-white font-semibold py-3 px-8 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg disabled:opacity-50 w-full"
+                className="w-full bg-gradient-to-r from-teal-600 to-blue-600 hover:from-teal-700 hover:to-blue-700 text-white font-semibold py-2 sm:py-3 px-4 sm:px-6 rounded-lg sm:rounded-xl transition-all duration-200 hover:scale-105 shadow-md disabled:opacity-50 text-xs sm:text-sm"
               >
                 {isSubmitting ? "Submitting..." : "💾 Create Invoice"}
               </button>
@@ -349,15 +349,15 @@ export default function Invoices() {
         </div>
 
         {/* Filter Section */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-8">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">Filter Invoices</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white p-4 sm:p-6 rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 mb-4 sm:mb-6 md:mb-8">
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-3 sm:mb-4">Filter Invoices</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Filter by Company</label>
+              <label className="block text-xs sm:text-sm md:text-sm font-semibold text-gray-700 mb-2">Filter by Company</label>
               <select
                 value={selectedCompany}
                 onChange={(e) => setSelectedCompany(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
+                className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all text-xs sm:text-sm"
               >
                 <option value="">All Companies</option>
                 {companies.map((comp) => (
@@ -370,7 +370,7 @@ export default function Invoices() {
             <div className="flex items-end">
               <button
                 onClick={() => fetchInvoices()}
-                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg"
+                className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-2 sm:py-3 px-4 sm:px-6 rounded-lg sm:rounded-xl transition-all duration-200 hover:scale-105 shadow-lg text-xs sm:text-sm"
               >
                 Apply Filter
               </button>
@@ -379,58 +379,58 @@ export default function Invoices() {
         </div>
 
         {/* Invoices List */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-gray-800">All Invoices</h2>
-            <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+        <div className="bg-white p-4 sm:p-6 rounded-xl sm:rounded-2xl shadow-sm border border-gray-100">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 sm:mb-6">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-800">All Invoices</h2>
+            <span className="text-xs sm:text-sm md:text-sm text-gray-500 bg-gray-100 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full mt-2 sm:mt-0">
               {invoices.length} {invoices.length === 1 ? 'invoice' : 'invoices'}
             </span>
           </div>
 
           {isLoading ? (
-            <div className="flex justify-center items-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
-              <span className="ml-2 text-gray-600">Loading invoices...</span>
+            <div className="flex justify-center items-center py-6 sm:py-8 md:py-12">
+              <div className="animate-spin rounded-full h-6 w-6 sm:h-8 sm:w-8 md:h-10 md:w-10 border-b-2 border-teal-600"></div>
+              <span className="ml-2 text-sm sm:text-base md:text-lg text-gray-600">Loading invoices...</span>
             </div>
           ) : invoices.length === 0 ? (
-            <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="text-center py-6 sm:py-8 md:py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 sm:h-10 sm:w-10 md:h-12 md:w-12 mx-auto text-gray-400 mb-3 sm:mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-              <p className="text-gray-500">No invoices found. {selectedCompany ? 'Try changing the filter or' : ''} create your first invoice above.</p>
+              <p className="text-sm sm:text-base md:text-lg text-gray-500">No invoices found. {selectedCompany ? 'Try changing the filter or' : ''} create your first invoice above.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-2xl border border-gray-200">
-              <table className="w-full">
+            <div className="overflow-x-auto rounded-xl sm:rounded-2xl border border-gray-200">
+              <table className="min-w-full divide-y divide-gray-200">
                 <thead>
                   <tr className="bg-gradient-to-r from-teal-600 to-blue-600 text-white">
-                    <th className="px-6 py-4 text-left font-semibold">Invoice #</th>
-                    <th className="px-6 py-4 text-left font-semibold">Company</th>
-                    <th className="px-6 py-4 text-left font-semibold">Date</th>
-                    <th className="px-6 py-4 text-left font-semibold">Amount</th>
-                    <th className="px-6 py-4 text-left font-semibold">Actions</th>
+                    <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Invoice #</th>
+                    <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Company</th>
+                    <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Date</th>
+                    <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Amount</th>
+                    <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {invoices.map((invoice) => (
                     <tr key={invoice.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4 font-medium text-gray-900">#{invoice.invoice_number}</td>
-                      <td className="px-6 py-4 text-gray-600">{invoice.companies?.name || 'Unknown'}</td>
-                      <td className="px-6 py-4 text-gray-600">
+                      <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-gray-900 whitespace-nowrap">#{invoice.invoice_number}</td>
+                      <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600">{invoice.companies?.name || 'Unknown'}</td>
+                      <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600 whitespace-nowrap">
                         {new Date(invoice.date).toLocaleDateString('en-IN')}
                       </td>
-                      <td className="px-6 py-4 font-semibold text-teal-600">₹{invoice.total_amount.toFixed(2)}</td>
-                      <td className="px-6 py-4">
-                        <div className="flex space-x-2">
+                      <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-semibold text-teal-600 whitespace-nowrap">₹{invoice.total_amount.toFixed(2)}</td>
+                      <td className="px-2 sm:px-4 py-2 sm:py-3">
+                        <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
                           <button
                             onClick={() => generateInvoicePDF(invoice)}
-                            className="bg-blue-100 text-blue-600 hover:bg-blue-200 px-3 py-1 rounded-lg transition-colors"
+                            className="bg-blue-100 text-blue-600 hover:bg-blue-200 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg transition-colors w-full sm:w-auto text-xs sm:text-sm"
                           >
                             📄 PDF
                           </button>
                           <button
                             onClick={() => generateCompanyReportPDF(invoice.company_id)}
-                            className="bg-green-100 text-green-600 hover:bg-green-200 px-3 py-1 rounded-lg transition-colors"
+                            className="bg-green-100 text-green-600 hover:bg-green-200 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg transition-colors w-full sm:w-auto text-xs sm:text-sm"
                           >
                             📊 Report
                           </button>
