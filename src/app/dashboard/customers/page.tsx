@@ -469,10 +469,10 @@ export default function SalesPage() {
 
           const detailHeaders = [['PRODUCT', 'QUANTITY', 'PRICE', 'DISCOUNT', 'TOTAL']];
           const detailRows = data.items.map((sale) => [
-            sale.products?.name || '',
+            sale.products?.name || 'Unknown Product',
             sale.quantity.toString(),
-            `₹${sale.products?.price.toFixed(2) || '0.00'}`,
-            `₹${sale.discount_price.toFixed(2)}`,
+            `₹${sale.products?.price?.toFixed(2) || '0.00'}`,
+            `₹${(sale.discount_price || 0).toFixed(2)}`, // Handle null discount_price
             `₹${sale.total_price.toFixed(2)}`,
           ]);
 
@@ -540,9 +540,8 @@ export default function SalesPage() {
           {(['customers', 'sales', 'reports'] as const).map((tab) => (
             <button
               key={tab}
-              className={`flex-1 py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm font-semibold rounded-lg sm:rounded-xl transition-all duration-200 ${
-                activeTab === tab ? 'bg-white text-teal-600 shadow-md' : 'text-gray-500 hover:text-gray-700'
-              }`}
+              className={`flex-1 py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm font-semibold rounded-lg sm:rounded-xl transition-all duration-200 ${activeTab === tab ? 'bg-white text-teal-600 shadow-md' : 'text-gray-500 hover:text-gray-700'
+                }`}
               onClick={() => setActiveTab(tab)}
             >
               {tab === 'customers' && 'Customers'}
@@ -713,9 +712,9 @@ export default function SalesPage() {
                       value={
                         products.find((p) => p.id === item.productId)
                           ? {
-                              value: item.productId,
-                              label: `${products.find((p) => p.id === item.productId)?.name || ''} - ${products.find((p) => p.id === item.productId)?.quantity_unit || 'unit'} - ₹${products.find((p) => p.id === item.productId)?.price.toFixed(2) || '0.00'} (Stock: ${products.find((p) => p.id === item.productId)?.quantity || 0}${products.find((p) => p.id === item.productId)?.quantity === 0 ? ' - OUT OF STOCK' : (products.find((p) => p.id === item.productId)?.quantity || 0) <= 5 ? ' - LOW STOCK' : ''})`,
-                            }
+                            value: item.productId,
+                            label: `${products.find((p) => p.id === item.productId)?.name || ''} - ${products.find((p) => p.id === item.productId)?.quantity_unit || 'unit'} - ₹${products.find((p) => p.id === item.productId)?.price.toFixed(2) || '0.00'} (Stock: ${products.find((p) => p.id === item.productId)?.quantity || 0}${products.find((p) => p.id === item.productId)?.quantity === 0 ? ' - OUT OF STOCK' : (products.find((p) => p.id === item.productId)?.quantity || 0) <= 5 ? ' - LOW STOCK' : ''})`,
+                          }
                           : null
                       }
                       onChange={(selected: SingleValue<SelectOption>) =>

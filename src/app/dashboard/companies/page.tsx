@@ -27,7 +27,7 @@ export default function Companies() {
         .from('companies')
         .select('*')
         .order('created_at', { ascending: false });
-      
+
       if (error) throw error;
       setCompanies(data || []);
     } catch (error: unknown) {
@@ -40,23 +40,23 @@ export default function Companies() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.name.trim()) {
       toast.error('Company name is required');
       return;
     }
-    
+
     try {
       setIsSubmitting(true);
       const { error } = await supabase
         .from('companies')
-        .insert([{ 
-          name: formData.name.trim(), 
-          type: formData.type.trim() || null 
+        .insert([{
+          name: formData.name.trim(),
+          type: formData.type.trim() || null
         }]);
-      
+
       if (error) throw error;
-      
+
       toast.success('Company added successfully');
       setFormData({ name: '', type: '' });
       fetchCompanies();
@@ -81,7 +81,7 @@ export default function Companies() {
         {/* Add Company Form */}
         <div className="bg-gradient-to-r from-teal-50 to-blue-50 p-4 sm:p-6 rounded-xl sm:rounded-2xl mb-4 sm:mb-6 md:mb-8">
           <h2 className="text-xl sm:text-2xl md:text-2xl font-bold text-gray-800 mb-4 sm:mb-6">Add New Company</h2>
-          
+
           <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:gap-6">
             <div>
               <label className="block text-xs sm:text-sm md:text-sm font-semibold text-gray-700 mb-2">Company Name *</label>
@@ -94,7 +94,7 @@ export default function Companies() {
                 required
               />
             </div>
-            
+
             <div>
               <label className="block text-xs sm:text-sm md:text-sm font-semibold text-gray-700 mb-2">Type (optional)</label>
               <input
@@ -105,7 +105,7 @@ export default function Companies() {
                 className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all text-xs sm:text-sm"
               />
             </div>
-            
+
             <div>
               <button
                 type="submit"
@@ -134,18 +134,18 @@ export default function Companies() {
             </div>
           ) : companies.length === 0 ? (
             <div className="text-center py-6 sm:py-8 md:py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-              <svg 
-                xmlns="http://www.w3.org/2000/svg" 
-                className="h-8 w-8 sm:h-10 sm:w-10 md:h-12 md:w-12 mx-auto text-gray-400 mb-3 sm:mb-4" 
-                fill="none" 
-                viewBox="0 0 24 24" 
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-8 w-8 sm:h-10 sm:w-10 md:h-12 md:w-12 mx-auto text-gray-400 mb-3 sm:mb-4"
+                fill="none"
+                viewBox="0 0 24 24"
                 stroke="currentColor"
               >
-                <path 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                  strokeWidth={2} 
-                  d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" 
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
                 />
               </svg>
               <p className="text-sm sm:text-base md:text-lg text-gray-500">No companies added yet. Add your first company above.</p>
@@ -166,18 +166,18 @@ export default function Companies() {
                       <td className="px-3 sm:px-4 py-2 sm:py-3 font-medium text-gray-900">
                         <div className="flex items-center">
                           <div className="bg-blue-100 p-1 sm:p-2 rounded-lg mr-2 sm:mr-3">
-                            <svg 
-                              xmlns="http://www.w3.org/2000/svg" 
-                              className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" 
-                              fill="none" 
-                              viewBox="0 0 24 24" 
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600"
+                              fill="none"
+                              viewBox="0 0 24 24"
                               stroke="currentColor"
                             >
-                              <path 
-                                strokeLinecap="round" 
-                                strokeLinejoin="round" 
-                                strokeWidth={2} 
-                                d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" 
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
                               />
                             </svg>
                           </div>

@@ -560,9 +560,8 @@ export default function Products() {
                 {filteredProducts.map((product) => (
                   <div
                     key={product.id}
-                    className={`bg-white border rounded-lg sm:rounded-xl p-2 sm:p-3 hover:shadow-lg transition-all ${
-                      product.stock === 0 ? 'border-red-200 bg-red-50' : 'border-gray-200 hover:border-teal-300'
-                    }`}
+                    className={`bg-white border rounded-lg sm:rounded-xl p-2 sm:p-3 hover:shadow-lg transition-all ${product.stock === 0 ? 'border-red-200 bg-red-50' : 'border-gray-200 hover:border-teal-300'
+                      }`}
                   >
                     {product.image_url ? (
                       <Image

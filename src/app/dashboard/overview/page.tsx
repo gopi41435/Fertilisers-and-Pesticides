@@ -68,7 +68,7 @@ export default function Overview() {
   const fetchOverviewData = async () => {
     try {
       setIsLoading(true);
-      
+
       // Fetch invoices (purchases)
       const { data: invoicesData, error: invoicesError } = await supabase
         .from('invoices')
@@ -130,10 +130,10 @@ export default function Overview() {
       // Aggregate by company (purchases only since sales don't have company info)
       const aggregatedByCompany = purchases.reduce<Record<string, { name: string; purchases: number }>>((acc, invoice) => {
         const companyId = invoice.company_id;
-        const companyName = invoice.companies && typeof invoice.companies === 'object' && 'name' in invoice.companies 
-          ? invoice.companies.name 
+        const companyName = invoice.companies && typeof invoice.companies === 'object' && 'name' in invoice.companies
+          ? invoice.companies.name
           : 'Unknown Company';
-        
+
         if (!acc[companyId]) {
           acc[companyId] = { name: companyName, purchases: 0 };
         }
@@ -152,13 +152,13 @@ export default function Overview() {
       // Calculate growth percentages
       let pGrowth = null;
       let sGrowth = null;
-      
+
       if (chartData.length > 1) {
         const firstPurchases = chartData[0].purchases;
         const lastPurchases = chartData[chartData.length - 1].purchases;
         const firstSales = chartData[0].sales;
         const lastSales = chartData[chartData.length - 1].sales;
-        
+
         if (firstPurchases > 0) {
           pGrowth = ((lastPurchases - firstPurchases) / firstPurchases) * 100;
         }
@@ -241,7 +241,7 @@ export default function Overview() {
               </p>
             )}
           </div>
-          
+
           <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-6 rounded-2xl border border-green-100">
             <h2 className="text-lg font-semibold text-gray-800 mb-2">Total Sales</h2>
             <p className="text-2xl font-bold text-green-600">₹{totalSales.toLocaleString('en-IN')}</p>
@@ -251,7 +251,7 @@ export default function Overview() {
               </p>
             )}
           </div>
-          
+
           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-2xl border border-blue-100">
             <h2 className="text-lg font-semibold text-gray-800 mb-2">Net Margin</h2>
             <p className="text-2xl font-bold text-blue-600">₹{(totalSales - totalPurchases).toLocaleString('en-IN')}</p>
@@ -259,7 +259,7 @@ export default function Overview() {
               {totalPurchases > 0 ? `${(((totalSales - totalPurchases) / totalPurchases) * 100).toFixed(1)}% ROI` : 'N/A'}
             </p>
           </div>
-          
+
           <div className="bg-gradient-to-r from-purple-50 to-pink-50 p-6 rounded-2xl border border-purple-100">
             <h2 className="text-lg font-semibold text-gray-800 mb-2">Avg Invoice</h2>
             <p className="text-2xl font-bold text-purple-600">₹{Math.round(avgInvoiceValue).toLocaleString('en-IN')}</p>
@@ -270,7 +270,7 @@ export default function Overview() {
         {/* Main Chart */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-8">
           <h2 className="text-2xl font-bold text-gray-800 mb-6">Purchase vs Sales Trend</h2>
-          
+
           {isLoading ? (
             <div className="flex justify-center items-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
@@ -287,12 +287,12 @@ export default function Overview() {
             <ResponsiveContainer width="100%" height={400}>
               <AreaChart data={combinedData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis 
-                  dataKey="date" 
+                <XAxis
+                  dataKey="date"
                   tick={{ fill: '#6b7280', fontSize: 12 }}
                   tickFormatter={(value) => new Date(value).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
                 />
-                <YAxis 
+                <YAxis
                   tick={{ fill: '#6b7280', fontSize: 12 }}
                   tickFormatter={(value) => `₹${(value / 1000).toFixed(0)}K`}
                 />
@@ -326,7 +326,7 @@ export default function Overview() {
           {/* Purchase Distribution by Company */}
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
             <h2 className="text-2xl font-bold text-gray-800 mb-6">Purchase Distribution by Company</h2>
-            
+
             {isLoading ? (
               <div className="flex justify-center items-center py-12">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
@@ -365,7 +365,7 @@ export default function Overview() {
           {/* Performance Metrics */}
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
             <h2 className="text-2xl font-bold text-gray-800 mb-6">Key Performance Metrics</h2>
-            
+
             <div className="space-y-4">
               <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
                 <span className="text-gray-700 font-medium">Gross Profit Margin</span>
@@ -373,19 +373,19 @@ export default function Overview() {
                   {totalPurchases > 0 ? `${(((totalSales - totalPurchases) / totalSales) * 100).toFixed(1)}%` : 'N/A'}
                 </span>
               </div>
-              
+
               <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
                 <span className="text-gray-700 font-medium">Return on Investment</span>
                 <span className="text-lg font-bold text-blue-600">
                   {totalPurchases > 0 ? `${(((totalSales - totalPurchases) / totalPurchases) * 100).toFixed(1)}%` : 'N/A'}
                 </span>
               </div>
-              
+
               <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
                 <span className="text-gray-700 font-medium">Active Suppliers</span>
                 <span className="text-lg font-bold text-purple-600">{companyData.length}</span>
               </div>
-              
+
               <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
                 <span className="text-gray-700 font-medium">Purchase/Sales Ratio</span>
                 <span className="text-lg font-bold text-orange-600">

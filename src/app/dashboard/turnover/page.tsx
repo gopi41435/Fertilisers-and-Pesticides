@@ -70,7 +70,7 @@ export default function Turnover() {
   const fetchTurnoverData = async () => {
     try {
       setIsLoading(true);
-      
+
       // Fetch invoice data (purchases)
       const { data: invoicesData, error: invoicesError } = await supabase
         .from('invoices')
@@ -83,7 +83,7 @@ export default function Turnover() {
           )
         `)
         .order('date', { ascending: true });
-      
+
       if (invoicesError) throw invoicesError;
 
       // Fetch sales data
@@ -91,7 +91,7 @@ export default function Turnover() {
         .from('sales')
         .select('total_price, purchase_date')
         .order('purchase_date', { ascending: true });
-      
+
       if (salesError) throw salesError;
 
       const rawInvoices = invoicesData || [];
@@ -103,7 +103,7 @@ export default function Turnover() {
         companies: Array.isArray(inv.companies) ? inv.companies[0] || null : inv.companies,
       }));
       const sales = (salesData || []) as Sale[];
-      
+
 
       // Calculate totals
       const totalPurchases = purchases.reduce((sum, invoice) => sum + invoice.total_amount, 0);
@@ -185,7 +185,7 @@ export default function Turnover() {
       const companyAnalysis = purchases.reduce<Record<string, { name: string; total: number; count: number }>>((acc, invoice) => {
         const companyId = invoice.company_id;
         const companyName = invoice.companies?.name || 'Unknown Company';
-        
+
         if (!acc[companyId]) {
           acc[companyId] = { name: companyName, total: 0, count: 0 };
         }
@@ -205,8 +205,8 @@ export default function Turnover() {
         .sort((a, b) => b.purchaseTurnover - a.purchaseTurnover);
 
       // Calculate average daily turnover
-      const avgDaily = dailyTurnoverData.length > 0 
-        ? dailyTurnoverData.reduce((sum, day) => sum + day.purchaseTurnover + day.salesTurnover, 0) / dailyTurnoverData.length 
+      const avgDaily = dailyTurnoverData.length > 0
+        ? dailyTurnoverData.reduce((sum, day) => sum + day.purchaseTurnover + day.salesTurnover, 0) / dailyTurnoverData.length
         : 0;
 
       setTotalPurchaseTurnover(totalPurchases);
@@ -229,7 +229,7 @@ export default function Turnover() {
       return (
         <div className="bg-white p-4 border border-gray-200 rounded-lg shadow-lg">
           <p className="font-medium mb-2">
-            {viewMode === 'daily' 
+            {viewMode === 'daily'
               ? `Date: ${new Date(label || '').toLocaleDateString('en-IN')}`
               : `Month: ${label}`
             }
@@ -289,27 +289,25 @@ export default function Turnover() {
             <div className="flex space-x-2">
               <button
                 onClick={() => setViewMode('daily')}
-                className={`px-4 py-2 rounded-lg transition-colors ${
-                  viewMode === 'daily'
+                className={`px-4 py-2 rounded-lg transition-colors ${viewMode === 'daily'
                     ? 'bg-indigo-600 text-white'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
+                  }`}
               >
                 Daily View
               </button>
               <button
                 onClick={() => setViewMode('monthly')}
-                className={`px-4 py-2 rounded-lg transition-colors ${
-                  viewMode === 'monthly'
+                className={`px-4 py-2 rounded-lg transition-colors ${viewMode === 'monthly'
                     ? 'bg-indigo-600 text-white'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
+                  }`}
               >
                 Monthly View
               </button>
             </div>
           </div>
-          
+
           {isLoading ? (
             <div className="flex justify-center items-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
@@ -326,46 +324,46 @@ export default function Turnover() {
             <ResponsiveContainer width="100%" height={400}>
               <ComposedChart data={currentData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis 
+                <XAxis
                   dataKey={xAxisKey}
                   tick={{ fill: '#6b7280', fontSize: 12 }}
-                  tickFormatter={(value) => 
-                    viewMode === 'daily' 
+                  tickFormatter={(value) =>
+                    viewMode === 'daily'
                       ? new Date(value).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })
                       : value
                   }
                 />
-                <YAxis 
+                <YAxis
                   yAxisId="left"
                   tick={{ fill: '#6b7280', fontSize: 12 }}
                   tickFormatter={(value) => `₹${(value / 1000).toFixed(0)}K`}
                 />
-                <YAxis 
-                  yAxisId="right" 
+                <YAxis
+                  yAxisId="right"
                   orientation="right"
                   tick={{ fill: '#6b7280', fontSize: 12 }}
                 />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend />
-                <Bar 
+                <Bar
                   yAxisId="left"
-                  dataKey="purchaseTurnover" 
-                  fill="#6366F1" 
+                  dataKey="purchaseTurnover"
+                  fill="#6366F1"
                   name="Purchase Turnover (₹)"
                   radius={[2, 2, 0, 0]}
                 />
-                <Bar 
+                <Bar
                   yAxisId="left"
-                  dataKey="salesTurnover" 
-                  fill="#10B981" 
+                  dataKey="salesTurnover"
+                  fill="#10B981"
                   name="Sales Turnover (₹)"
                   radius={[2, 2, 0, 0]}
                 />
-                <Line 
+                <Line
                   yAxisId="right"
-                  type="monotone" 
-                  dataKey="netTurnover" 
-                  stroke="#F59E0B" 
+                  type="monotone"
+                  dataKey="netTurnover"
+                  stroke="#F59E0B"
                   strokeWidth={3}
                   dot={{ fill: '#F59E0B', strokeWidth: 2, r: 4 }}
                   name="Net Turnover (₹)"
@@ -418,27 +416,27 @@ export default function Turnover() {
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={companyTurnover.slice(0, 5)} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis 
+                  <XAxis
                     type="number"
                     tick={{ fill: '#6b7280', fontSize: 12 }}
                     tickFormatter={(value) => `₹${(value / 1000).toFixed(0)}K`}
                   />
-                  <YAxis 
+                  <YAxis
                     type="category"
                     dataKey="name"
                     tick={{ fill: '#6b7280', fontSize: 10 }}
                     width={80}
                   />
-                  <Tooltip 
+                  <Tooltip
                     formatter={(value: number) => [`₹${value.toLocaleString('en-IN')}`, 'Purchase Turnover']}
-                    contentStyle={{ 
-                      backgroundColor: 'white', 
+                    contentStyle={{
+                      backgroundColor: 'white',
                       border: '1px solid #e5e7eb',
                       borderRadius: '0.5rem'
                     }}
                   />
-                  <Bar 
-                    dataKey="purchaseTurnover" 
+                  <Bar
+                    dataKey="purchaseTurnover"
                     fill="#8B5CF6"
                     radius={[0, 4, 4, 0]}
                   />
@@ -457,13 +455,13 @@ export default function Turnover() {
             </p>
             <p className="text-sm text-gray-600 mt-1">Sales/Purchase ratio</p>
           </div>
-          
+
           <div className="bg-gradient-to-r from-pink-50 to-rose-50 p-6 rounded-2xl border border-pink-100">
             <h3 className="text-lg font-semibold text-gray-800 mb-2">Active Suppliers</h3>
             <p className="text-2xl font-bold text-pink-600">{companyTurnover.length}</p>
             <p className="text-sm text-gray-600 mt-1">Companies in portfolio</p>
           </div>
-          
+
           <div className="bg-gradient-to-r from-amber-50 to-yellow-50 p-6 rounded-2xl border border-amber-100">
             <h3 className="text-lg font-semibold text-gray-800 mb-2">Avg Invoice Value</h3>
             <p className="text-2xl font-bold text-amber-600">
@@ -471,7 +469,7 @@ export default function Turnover() {
             </p>
             <p className="text-sm text-gray-600 mt-1">Per invoice average</p>
           </div>
-          
+
           <div className="bg-gradient-to-r from-emerald-50 to-green-50 p-6 rounded-2xl border border-emerald-100">
             <h3 className="text-lg font-semibold text-gray-800 mb-2">Profit Margin</h3>
             <p className="text-2xl font-bold text-emerald-600">
