@@ -8,9 +8,7 @@ interface InvoiceRecord {
   date: string;
   total_amount: number;
   company_id: string;
-  companies?: {
-    name: string;
-  } | null;
+  companies: { name: string }[] | null; // Updated to handle array or null
 }
 
 interface SaleRecord {
@@ -92,7 +90,13 @@ export default function Overview() {
 
       if (salesError) throw salesError;
 
-      const purchases = (invoicesData || []) as InvoiceRecord[];
+      const purchases = (invoicesData || []).map((inv: InvoiceRecord) => ({
+        date: inv.date,
+        total_amount: inv.total_amount,
+        company_id: inv.company_id,
+        companies: inv.companies || null, // Ensure companies is an array or null
+      })) as InvoiceRecord[];
+
       const sales = (salesData || []) as SaleRecord[];
 
       // Calculate totals
@@ -130,8 +134,8 @@ export default function Overview() {
       // Aggregate by company (purchases only since sales don't have company info)
       const aggregatedByCompany = purchases.reduce<Record<string, { name: string; purchases: number }>>((acc, invoice) => {
         const companyId = invoice.company_id;
-        const companyName = invoice.companies && typeof invoice.companies === 'object' && 'name' in invoice.companies
-          ? invoice.companies.name
+        const companyName = invoice.companies && invoice.companies.length > 0
+          ? invoice.companies[0].name // Safely access the first company's name
           : 'Unknown Company';
 
         if (!acc[companyId]) {
@@ -175,9 +179,8 @@ export default function Overview() {
       setAvgInvoiceValue(avgValue);
       setPurchaseGrowth(pGrowth);
       setSalesGrowth(sGrowth);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      toast.error(`Error fetching overview data: ${message}`);
+    } catch {
+      toast.error('Error fetching overview data');
     } finally {
       setIsLoading(false);
     }
@@ -432,4 +435,3 @@ export default function Overview() {
     </div>
   );
 }
-

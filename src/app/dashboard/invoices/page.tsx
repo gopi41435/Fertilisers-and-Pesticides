@@ -62,7 +62,7 @@ export default function Invoices() {
 
       if (error) throw error;
       setInvoices(data || []);
-    } catch (error: unknown) {
+    } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       toast.error(`Error fetching invoices: ${message}`);
     } finally {
@@ -79,13 +79,13 @@ export default function Invoices() {
 
       if (error) throw error;
       setCompanies(data || []);
-    } catch (error: unknown) {
+    } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       toast.error(`Error fetching companies: ${message}`);
     }
   }, []);
 
-  const getNextInvoiceNumber = async () => {
+  const getNextInvoiceNumber = async (): Promise<string> => {
     try {
       const { data, error } = await supabase
         .from('invoices')
@@ -95,13 +95,14 @@ export default function Invoices() {
 
       if (error) throw error;
 
-      if (data.length === 0) return '001';
+      if (!data || data.length === 0) return '001';
 
       const lastNumber = parseInt(data[0].invoice_number, 10);
       return (lastNumber + 1).toString().padStart(3, '0');
     } catch (error) {
-      toast.error('Error generating invoice number');
-      return '001';
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Error generating invoice number: ${message}`);
+      return '001'; // Fallback value
     }
   };
 
@@ -143,7 +144,7 @@ export default function Invoices() {
         date: '',
         total_amount: ''
       });
-    } catch (error: unknown) {
+    } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       toast.error(`Error adding invoice: ${message}`);
     } finally {
@@ -265,7 +266,7 @@ export default function Invoices() {
       }
 
       doc.save(`${company.name}-invoice-report.pdf`);
-    } catch (error) {
+    } catch {
       toast.error('Error generating report');
     } finally {
       setIsLoading(false);

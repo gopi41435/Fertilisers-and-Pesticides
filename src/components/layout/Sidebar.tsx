@@ -56,7 +56,7 @@ export const Sidebar = () => {
       await supabase.auth.signOut();
       toast.success('Logged out successfully');
       router.push('/login');
-    } catch (error) {
+    } catch {
       toast.error('Logout failed');
     }
   };
@@ -111,8 +111,8 @@ export const Sidebar = () => {
                   <Link
                     href={item.href}
                     className={`flex items-center px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg transition-all text-sm sm:text-base ${isActive
-                        ? 'bg-blue-50 text-blue-700 font-medium'
-                        : 'text-gray-600 hover:bg-gray-100'
+                      ? 'bg-blue-50 text-blue-700 font-medium'
+                      : 'text-gray-600 hover:bg-gray-100'
                       }`}
                     onClick={() => isMobile && setIsMobileMenuOpen(false)}
                   >

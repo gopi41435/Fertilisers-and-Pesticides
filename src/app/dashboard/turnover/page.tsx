@@ -96,7 +96,7 @@ export default function Turnover() {
 
       const rawInvoices = invoicesData || [];
       // Transform to match Invoice interface: take first company if array, or use as-is
-      const purchases: Invoice[] = rawInvoices.map((inv: any) => ({
+      const purchases: Invoice[] = (rawInvoices as unknown as Invoice[]).map((inv: Invoice) => ({
         total_amount: inv.total_amount,
         date: inv.date,
         company_id: inv.company_id,
@@ -290,8 +290,8 @@ export default function Turnover() {
               <button
                 onClick={() => setViewMode('daily')}
                 className={`px-4 py-2 rounded-lg transition-colors ${viewMode === 'daily'
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
               >
                 Daily View
@@ -299,8 +299,8 @@ export default function Turnover() {
               <button
                 onClick={() => setViewMode('monthly')}
                 className={`px-4 py-2 rounded-lg transition-colors ${viewMode === 'monthly'
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
               >
                 Monthly View

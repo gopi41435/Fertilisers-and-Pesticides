@@ -1,19 +1,11 @@
 'use client';
-import { usePathname } from 'next/navigation';
+ 
 import { useState, useEffect } from 'react';
 
-const navItems = [
-  { href: '/dashboard/companies', label: 'Companies' },
-  { href: '/dashboard/invoices', label: 'Invoices' },
-  { href: '/dashboard/products', label: 'Products' },
-  { href: '/dashboard/customers', label: 'Customers' },
-  { href: '/dashboard/turnover', label: 'Turnover' },
-  { href: '/dashboard/overview', label: 'Overview' },
-  { href: '/dashboard/schedule', label: 'Schedule' },
-];
+ 
 
 export const Header = () => {
-  const pathname = usePathname();
+  
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
 
@@ -30,7 +22,7 @@ export const Header = () => {
     return () => window.removeEventListener('resize', checkDevice);
   }, []);
 
-  const currentPage = navItems.find(item => item.href === pathname)?.label || 'Dashboard';
+  
 
   return (
     <div className={`

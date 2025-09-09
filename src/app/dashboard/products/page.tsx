@@ -133,7 +133,15 @@ export default function Products() {
         .select('id, invoice_number, company_id, companies!inner(name)')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      setInvoices(data || []);
+
+      // Transform data to match Invoice interface
+      const transformedData = (data || []).map((item) => ({
+        id: item.id,
+        invoice_number: item.invoice_number,
+        company_id: item.company_id,
+        companies: item.companies && item.companies.length > 0 ? { name: item.companies[0].name } : null,
+      }));
+      setInvoices(transformedData);
     } catch (error) {
       toast.error(`Error fetching invoices: ${(error as Error).message}`);
     }
