@@ -31,11 +31,11 @@ interface JSPDFWithAutoTable extends jsPDF {
 export default function Invoices() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [formData, setFormData] = useState({ 
-    company_id: '', 
-    invoice_number: '', 
-    date: '', 
-    total_amount: '' 
+  const [formData, setFormData] = useState({
+    company_id: '',
+    invoice_number: '',
+    date: '',
+    total_amount: ''
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -59,10 +59,10 @@ export default function Invoices() {
       }
 
       const { data, error } = await query;
-      
+
       if (error) throw error;
       setInvoices(data || []);
-    } catch (error: unknown) {
+    } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       toast.error(`Error fetching invoices: ${message}`);
     } finally {
@@ -76,32 +76,33 @@ export default function Invoices() {
         .from('companies')
         .select('*')
         .order('name', { ascending: true });
-      
+
       if (error) throw error;
       setCompanies(data || []);
-    } catch (error: unknown) {
+    } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       toast.error(`Error fetching companies: ${message}`);
     }
   }, []);
 
-  const getNextInvoiceNumber = async () => {
+  const getNextInvoiceNumber = async (): Promise<string> => {
     try {
       const { data, error } = await supabase
         .from('invoices')
         .select('invoice_number')
         .order('created_at', { ascending: false })
         .limit(1);
-      
+
       if (error) throw error;
-      
-      if (data.length === 0) return '001';
-      
+
+      if (!data || data.length === 0) return '001';
+
       const lastNumber = parseInt(data[0].invoice_number, 10);
       return (lastNumber + 1).toString().padStart(3, '0');
     } catch (error) {
-      toast.error('Error generating invoice number');
-      return '001';
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Error generating invoice number: ${message}`);
+      return '001'; // Fallback value
     }
   };
 
@@ -117,12 +118,12 @@ export default function Invoices() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.company_id || !formData.invoice_number || !formData.date || !formData.total_amount) {
       toast.error('Please fill all required fields');
       return;
     }
-    
+
     try {
       setIsSubmitting(true);
       const { error } = await supabase
@@ -131,19 +132,19 @@ export default function Invoices() {
           ...formData,
           total_amount: parseFloat(formData.total_amount),
         }]);
-      
+
       if (error) throw error;
-      
+
       toast.success('Invoice added successfully');
       fetchInvoices();
       const nextNumber = await getNextInvoiceNumber();
-      setFormData({ 
-        company_id: '', 
-        invoice_number: nextNumber, 
-        date: '', 
-        total_amount: '' 
+      setFormData({
+        company_id: '',
+        invoice_number: nextNumber,
+        date: '',
+        total_amount: ''
       });
-    } catch (error: unknown) {
+    } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       toast.error(`Error adding invoice: ${message}`);
     } finally {
@@ -159,7 +160,7 @@ export default function Invoices() {
     doc.setFontSize(20);
     doc.setTextColor(15, 118, 110);
     doc.text("LAKSHMI PRIYA FERTILISERS", 105, 20, { align: "center" });
-    
+
     doc.setFontSize(16);
     doc.setTextColor(0, 0, 0);
     doc.text("INVOICE", 105, 30, { align: "center" });
@@ -201,7 +202,7 @@ export default function Invoices() {
       doc.setFontSize(20);
       doc.setTextColor(15, 118, 110);
       doc.text("LAKSHMI PRIYA FERTILISERS", 105, 20, { align: "center" });
-      
+
       doc.setFontSize(16);
       doc.setTextColor(0, 0, 0);
       doc.text("COMPANY INVOICE REPORT", 105, 30, { align: "center" });
@@ -216,10 +217,10 @@ export default function Invoices() {
       if (companyInvoices && companyInvoices.length > 0) {
         // Summary table
         const totalAmount = companyInvoices.reduce((sum, inv) => sum + inv.total_amount, 0);
-        
+
         doc.setFont("helvetica", "bold");
         doc.text("SUMMARY", 20, 90);
-        
+
         autoTable(doc, {
           startY: 95,
           head: [['Total Invoices', 'Total Amount']],
@@ -265,7 +266,7 @@ export default function Invoices() {
       }
 
       doc.save(`${company.name}-invoice-report.pdf`);
-    } catch (error) {
+    } catch {
       toast.error('Error generating report');
     } finally {
       setIsLoading(false);
@@ -285,7 +286,7 @@ export default function Invoices() {
         {/* Add Invoice Form */}
         <div className="bg-gradient-to-r from-teal-50 to-blue-50 p-4 sm:p-6 rounded-xl sm:rounded-2xl mb-4 sm:mb-6 md:mb-8">
           <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-4 sm:mb-6">Create New Invoice</h2>
-          
+
           <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
             <div>
               <label className="block text-xs sm:text-sm md:text-sm font-semibold text-gray-700 mb-2">Company *</label>
@@ -300,7 +301,7 @@ export default function Invoices() {
                 required
               />
             </div>
-            
+
             <div>
               <label className="block text-xs sm:text-sm md:text-sm font-semibold text-gray-700 mb-2">Invoice Number (Auto-generated)</label>
               <input
@@ -310,7 +311,7 @@ export default function Invoices() {
                 className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl bg-gray-100 cursor-not-allowed text-xs sm:text-sm"
               />
             </div>
-            
+
             <div>
               <label className="block text-xs sm:text-sm md:text-sm font-semibold text-gray-700 mb-2">Date *</label>
               <input
@@ -321,7 +322,7 @@ export default function Invoices() {
                 required
               />
             </div>
-            
+
             <div>
               <label className="block text-xs sm:text-sm md:text-sm font-semibold text-gray-700 mb-2">Total Amount (₹) *</label>
               <input
@@ -335,7 +336,7 @@ export default function Invoices() {
                 required
               />
             </div>
-            
+
             <div className="sm:col-span-2">
               <button
                 type="submit"

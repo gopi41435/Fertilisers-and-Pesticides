@@ -1,19 +1,11 @@
 'use client';
-import { usePathname } from 'next/navigation';
+ 
 import { useState, useEffect } from 'react';
 
-const navItems = [
-  { href: '/dashboard/companies', label: 'Companies' },
-  { href: '/dashboard/invoices', label: 'Invoices' },
-  { href: '/dashboard/products', label: 'Products' },
-  { href: '/dashboard/customers', label: 'Customers' },
-  { href: '/dashboard/turnover', label: 'Turnover' },
-  { href: '/dashboard/overview', label: 'Overview' },
-  { href: '/dashboard/schedule', label: 'Schedule' },
-];
+ 
 
 export const Header = () => {
-  const pathname = usePathname();
+  
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
 
@@ -24,22 +16,22 @@ export const Header = () => {
       setIsMobile(width < 768);
       setIsTablet(width >= 768 && width < 1024);
     };
-    
+
     checkDevice();
     window.addEventListener('resize', checkDevice);
     return () => window.removeEventListener('resize', checkDevice);
   }, []);
 
-  const currentPage = navItems.find(item => item.href === pathname)?.label || 'Dashboard';
+  
 
   return (
     <div className={`
       fixed top-0 right-0 bg-white border-b border-gray-200 z-10 shadow-md 
       flex items-center justify-between transition-all duration-300
-      ${isMobile 
-        ? 'left-0 px-3 py-3 h-16' 
-        : isTablet 
-          ? 'left-64 px-4 py-4 h-18' 
+      ${isMobile
+        ? 'left-0 px-3 py-3 h-16'
+        : isTablet
+          ? 'left-64 px-4 py-4 h-18'
           : 'left-64 px-5 py-5 h-20'
       }
     `}>
@@ -47,16 +39,16 @@ export const Header = () => {
       <div className={`flex flex-col ${isMobile ? 'ml-12' : 'ml-0'}`}>
         <h2 className={`
           font-extrabold mt-2 tracking-tight text-gray-900 flex items-center gap-2
-          ${isMobile 
-            ? 'text-base leading-tight' 
-            : isTablet 
-              ? 'text-lg' 
+          ${isMobile
+            ? 'text-base leading-tight'
+            : isTablet
+              ? 'text-lg'
               : 'text-2xl'
           }
         `}>
           <span className="bg-gradient-to-r from-gray-600 to-emerald-400 bg-clip-text text-transparent">
             {isMobile ? 'Lakshmi Priya Fertilisers' : 'Lakshmi Priya Fertilisers'}
-          </span>    
+          </span>
         </h2>
       </div>
 
@@ -64,16 +56,16 @@ export const Header = () => {
       <div className="flex items-center gap-2 sm:gap-3">
         <span className={`
           rounded-full bg-green-100 pt-2 text-green-700 font-medium shadow-sm
-          ${isMobile 
-            ? 'px-2 py-1 text-xs' 
-            : isTablet 
-              ? 'px-2.5 py-1 text-xs' 
+          ${isMobile
+            ? 'px-2 py-1 text-xs'
+            : isTablet
+              ? 'px-2.5 py-1 text-xs'
               : 'px-3 py-1 text-xs'
           }
         `}>
           {isMobile ? '15/2019' : 'PL.No: 15/2019'}
         </span>
-        
+
         {/* Additional info for larger screens */}
         {!isMobile && (
           <div className="hidden lg:flex items-center gap-2">

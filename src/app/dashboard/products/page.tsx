@@ -133,7 +133,15 @@ export default function Products() {
         .select('id, invoice_number, company_id, companies!inner(name)')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      setInvoices(data || []);
+
+      // Transform data to match Invoice interface
+      const transformedData = (data || []).map((item) => ({
+        id: item.id,
+        invoice_number: item.invoice_number,
+        company_id: item.company_id,
+        companies: item.companies && item.companies.length > 0 ? { name: item.companies[0].name } : null,
+      }));
+      setInvoices(transformedData);
     } catch (error) {
       toast.error(`Error fetching invoices: ${(error as Error).message}`);
     }
@@ -560,9 +568,8 @@ export default function Products() {
                 {filteredProducts.map((product) => (
                   <div
                     key={product.id}
-                    className={`bg-white border rounded-lg sm:rounded-xl p-2 sm:p-3 hover:shadow-lg transition-all ${
-                      product.stock === 0 ? 'border-red-200 bg-red-50' : 'border-gray-200 hover:border-teal-300'
-                    }`}
+                    className={`bg-white border rounded-lg sm:rounded-xl p-2 sm:p-3 hover:shadow-lg transition-all ${product.stock === 0 ? 'border-red-200 bg-red-50' : 'border-gray-200 hover:border-teal-300'
+                      }`}
                   >
                     {product.image_url ? (
                       <Image
@@ -793,3 +800,4 @@ export default function Products() {
     </div>
   );
 }
+

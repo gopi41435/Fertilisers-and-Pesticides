@@ -5,12 +5,12 @@ import { usePathname } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { 
-  Building2, 
-  FileText, 
-  Package, 
-  Users, 
-  DollarSign, 
+import {
+  Building2,
+  FileText,
+  Package,
+  Users,
+  DollarSign,
   BarChart3,
   LogOut,
   Zap,
@@ -30,7 +30,7 @@ export const Sidebar = () => {
     const checkDevice = () => {
       setIsMobile(window.innerWidth < 768);
     };
-    
+
     checkDevice();
     window.addEventListener('resize', checkDevice);
     return () => window.removeEventListener('resize', checkDevice);
@@ -56,7 +56,7 @@ export const Sidebar = () => {
       await supabase.auth.signOut();
       toast.success('Logged out successfully');
       router.push('/login');
-    } catch (error) {
+    } catch {
       toast.error('Logout failed');
     }
   };
@@ -78,7 +78,7 @@ export const Sidebar = () => {
 
       {/* Mobile Overlay */}
       {isMobileMenuOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
           onClick={toggleMobileMenu}
         />
@@ -99,7 +99,7 @@ export const Sidebar = () => {
             <span className="sm:hidden">Admin</span>
           </h1>
         </div>
-        
+
         {/* Navigation */}
         <nav className="flex-1 p-3 sm:p-4 overflow-y-auto">
           <ul className="space-y-1">
@@ -108,13 +108,12 @@ export const Sidebar = () => {
               const isActive = pathname === item.href;
               return (
                 <li key={item.href}>
-                  <Link 
+                  <Link
                     href={item.href}
-                    className={`flex items-center px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg transition-all text-sm sm:text-base ${
-                      isActive
-                        ? 'bg-blue-50 text-blue-700 font-medium'
-                        : 'text-gray-600 hover:bg-gray-100'
-                    }`}
+                    className={`flex items-center px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg transition-all text-sm sm:text-base ${isActive
+                      ? 'bg-blue-50 text-blue-700 font-medium'
+                      : 'text-gray-600 hover:bg-gray-100'
+                      }`}
                     onClick={() => isMobile && setIsMobileMenuOpen(false)}
                   >
                     <Icon className="h-4 w-4 sm:h-5 sm:w-5 mr-2.5 sm:mr-3 opacity-75 flex-shrink-0" />
@@ -125,7 +124,7 @@ export const Sidebar = () => {
             })}
           </ul>
         </nav>
-        
+
         {/* Logout Button */}
         <div className="p-3 sm:p-4 border-t border-gray-200 mt-auto">
           <button
