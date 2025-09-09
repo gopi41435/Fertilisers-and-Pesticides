@@ -1,8 +1,9 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { useState, useEffect, useCallback } from 'react'; 
 import Image from 'next/image';
 import toast from 'react-hot-toast';
+import { supabase } from '@/lib/supabaseClient';
+import { PostgrestError } from '@supabase/supabase-js';
 
 interface Product {
   id: string;
@@ -16,6 +17,7 @@ interface Product {
   quantity: number;
   quantity_unit?: string;
   expiry_date?: string;
+  stock: number;
   invoices?: {
     invoice_number: string;
     companies?: {
@@ -38,11 +40,24 @@ interface Company {
   name: string;
 }
 
+interface FormData {
+  invoice_id: string;
+  name: string;
+  category: string;
+  price: string;
+  discount_price: string;
+  offer_scheme: string;
+  quantity: string;
+  quantity_unit: string;
+  expiry_date: string;
+  image: File | null;
+}
+
 export default function Products() {
   const [products, setProducts] = useState<Product[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [formData, setFormData] = useState<any>({
+  const [formData, setFormData] = useState<FormData>({
     invoice_id: '',
     name: '',
     category: 'Insecticide',
@@ -52,12 +67,14 @@ export default function Products() {
     quantity: '',
     quantity_unit: '',
     expiry_date: '',
-    image: null as File | null,
+    image: null,
   });
   const [filterCompany, setFilterCompany] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
 
   // For Editing
   const [isEditMode, setIsEditMode] = useState(false);
@@ -69,16 +86,35 @@ export default function Products() {
       let query = supabase
         .from('products')
         .select('*, invoices!inner(*, companies(*))')
-        .order('created_at', { ascending: false });
+        .order('name', { ascending: true });
 
       if (filterCategory) query = query.eq('category', filterCategory);
       if (filterCompany) query = query.eq('invoices.company_id', filterCompany);
 
       const { data, error } = await query;
       if (error) throw error;
-      setProducts(data || []);
-    } catch (error: any) {
-      toast.error(`Error fetching products: ${error.message}`);
+
+      // Group products by name and calculate total stock
+      const productMap = new Map();
+      (data || []).forEach((product: Product) => {
+        if (productMap.has(product.name)) {
+          const existing = productMap.get(product.name);
+          productMap.set(product.name, {
+            ...existing,
+            stock: existing.stock + product.quantity,
+            price: Math.min(existing.price, product.price),
+          });
+        } else {
+          productMap.set(product.name, {
+            ...product,
+            stock: product.quantity,
+          });
+        }
+      });
+
+      setProducts(Array.from(productMap.values()));
+    } catch (error: unknown) {
+      toast.error(`Error fetching products: ${(error as Error).message}`);
     } finally {
       setIsLoading(false);
     }
@@ -88,12 +124,15 @@ export default function Products() {
     try {
       const { data, error } = await supabase
         .from('invoices')
-        .select('id, invoice_number, company_id, companies(name)')
-        .order('created_at', { ascending: false });
+        .select('id, invoice_number, company_id, companies!inner(name)')
+        .order('created_at', { ascending: false }) as {
+        data: Invoice[] | null;
+        error: PostgrestError | null;
+      };
       if (error) throw error;
       setInvoices(data || []);
-    } catch (error: any) {
-      toast.error(`Error fetching invoices: ${error.message}`);
+    } catch (error: unknown) {
+      toast.error(`Error fetching invoices: ${(error as Error).message}`);
     }
   }, []);
 
@@ -102,8 +141,8 @@ export default function Products() {
       const { data, error } = await supabase.from('companies').select('*');
       if (error) throw error;
       setCompanies(data || []);
-    } catch (error: any) {
-      toast.error(`Error fetching companies: ${error.message}`);
+    } catch (error: unknown) {
+      toast.error(`Error fetching companies: ${(error as Error).message}`);
     }
   }, []);
 
@@ -128,15 +167,22 @@ export default function Products() {
     });
     setIsEditMode(false);
     setEditingProduct(null);
+    setSelectedInvoice(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       setIsSubmitting(true);
+
+      const existingProduct = products.find(
+        (p) =>
+          p.name.toLowerCase() === formData.name.toLowerCase() &&
+          p.quantity_unit === formData.quantity_unit
+      );
+
       let imageUrl = editingProduct?.image_url || '';
 
-      // If new image is uploaded
       if (formData.image) {
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('product-images')
@@ -150,7 +196,6 @@ export default function Products() {
       }
 
       if (isEditMode && editingProduct) {
-        // Update product
         const { error } = await supabase
           .from('products')
           .update({
@@ -171,8 +216,17 @@ export default function Products() {
 
         if (error) throw error;
         toast.success('Product updated successfully');
+      } else if (existingProduct && !isEditMode) {
+        const { error } = await supabase
+          .from('products')
+          .update({
+            quantity: existingProduct.quantity + parseInt(formData.quantity),
+          })
+          .eq('id', existingProduct.id);
+
+        if (error) throw error;
+        toast.success('Product stock updated successfully');
       } else {
-        // Add new product
         const { error } = await supabase.from('products').insert([
           {
             invoice_id: formData.invoice_id,
@@ -195,8 +249,8 @@ export default function Products() {
 
       fetchProducts();
       resetForm();
-    } catch (error: any) {
-      toast.error(`Error saving product: ${error.message}`);
+    } catch (error: unknown) {
+      toast.error(`Error saving product: ${(error as Error).message}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -219,10 +273,24 @@ export default function Products() {
     });
   };
 
+  const handleInvoiceSelect = (invoiceId: string) => {
+    setFormData({ ...formData, invoice_id: invoiceId });
+    const invoice = invoices.find((inv) => inv.id === invoiceId);
+    setSelectedInvoice(invoice || null);
+  };
+
+  const filteredProducts = products.filter(
+    (product) =>
+      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (product.invoices?.companies?.name || '')
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase())
+  );
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-teal-50 via-blue-50 to-cyan-50 p-4 md:p-6">
       <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-2xl p-6 md:p-8">
-        {/* Header */}
         <div className="mb-8 flex justify-between items-center">
           <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-teal-600 to-blue-600 bg-clip-text text-transparent">
             Product Management
@@ -237,7 +305,6 @@ export default function Products() {
           )}
         </div>
 
-        {/* Form */}
         <div className="bg-gradient-to-r from-teal-50 to-blue-50 p-6 rounded-2xl mb-8">
           <h2 className="text-2xl font-bold text-gray-800 mb-6">
             {isEditMode ? 'Edit Product' : 'Add New Product'}
@@ -247,28 +314,68 @@ export default function Products() {
             onSubmit={handleSubmit}
             className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6"
           >
-            {/* Invoice */}
-            <div>
+            <div className="md:col-span-2">
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Select Invoice
               </label>
               <select
                 value={formData.invoice_id}
-                onChange={(e) =>
-                  setFormData({ ...formData, invoice_id: e.target.value })
-                }
+                onChange={(e) => handleInvoiceSelect(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all bg-white"
               >
-                <option value="">Choose an invoice...</option>
+                <option value="">Search and select an invoice...</option>
                 {invoices.map((inv) => (
                   <option key={inv.id} value={inv.id}>
                     {inv.invoice_number} - {inv.companies?.name || 'Unknown'}
                   </option>
                 ))}
               </select>
+              {selectedInvoice && (
+                <div className="mt-2 p-3 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-blue-700">
+                    Selected: {selectedInvoice.invoice_number} from{' '}
+                    {selectedInvoice.companies?.name}
+                  </p>
+                </div>
+              )}
             </div>
 
-            {/* Product Name */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Category *
+              </label>
+              <select
+                value={formData.category}
+                onChange={(e) =>
+                  setFormData({ ...formData, category: e.target.value })
+                }
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
+                required
+              >
+                <option value="Insecticide">Insecticide</option>
+                <option value="Herbicide">Herbicide</option>
+                <option value="Fungicide">Fungicide</option>
+                <option value="Growth Promoter">Growth Promoter</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Quantity *
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={formData.quantity}
+                onChange={(e) =>
+                  setFormData({ ...formData, quantity: e.target.value })
+                }
+                placeholder="Enter quantity"
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
+                required
+              />
+            </div>
+
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Product Name *
@@ -285,26 +392,6 @@ export default function Products() {
               />
             </div>
 
-            {/* Category */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Category
-              </label>
-              <select
-                value={formData.category}
-                onChange={(e) =>
-                  setFormData({ ...formData, category: e.target.value })
-                }
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
-              >
-                <option value="Insecticide">Insecticide</option>
-                <option value="Herbicide">Herbicide</option>
-                <option value="Fungicide">Fungicide</option>
-                <option value="Growth Promoter">Growth Promoter</option>
-              </select>
-            </div>
-
-            {/* Price */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Price (₹) *
@@ -323,59 +410,6 @@ export default function Products() {
               />
             </div>
 
-            {/* Discount Price */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Discount Price (₹)
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={formData.discount_price}
-                onChange={(e) =>
-                  setFormData({ ...formData, discount_price: e.target.value })
-                }
-                placeholder="0.00"
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
-              />
-            </div>
-
-            {/* Offer */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Offer Scheme
-              </label>
-              <input
-                type="text"
-                value={formData.offer_scheme}
-                onChange={(e) =>
-                  setFormData({ ...formData, offer_scheme: e.target.value })
-                }
-                placeholder="Enter offer scheme"
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
-              />
-            </div>
-
-            {/* Quantity */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Quantity *
-              </label>
-              <input
-                type="number"
-                min="1"
-                value={formData.quantity}
-                onChange={(e) =>
-                  setFormData({ ...formData, quantity: e.target.value })
-                }
-                placeholder="Enter quantity"
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
-                required
-              />
-            </div>
-
-            {/* Quantity Unit */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Quantity Unit
@@ -404,7 +438,38 @@ export default function Products() {
               </select>
             </div>
 
-            {/* Expiry */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Discount Price (₹)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={formData.discount_price}
+                onChange={(e) =>
+                  setFormData({ ...formData, discount_price: e.target.value })
+                }
+                placeholder="0.00"
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Offer Scheme
+              </label>
+              <input
+                type="text"
+                value={formData.offer_scheme}
+                onChange={(e) =>
+                  setFormData({ ...formData, offer_scheme: e.target.value })
+                }
+                placeholder="Enter offer scheme"
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
+              />
+            </div>
+
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Expiry Date
@@ -419,7 +484,6 @@ export default function Products() {
               />
             </div>
 
-            {/* Image */}
             <div className="md:col-span-2">
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Product Image
@@ -455,12 +519,50 @@ export default function Products() {
           </form>
         </div>
 
-        {/* Products Grid */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
             <h2 className="text-2xl font-bold text-gray-800">All Products</h2>
+
+            <div className="flex flex-col md:flex-row gap-4">
+              <input
+                type="text"
+                placeholder="Search products..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              />
+
+              <div className="flex gap-2">
+                <select
+                  value={filterCompany}
+                  onChange={(e) => setFilterCompany(e.target.value)}
+                  className="px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                >
+                  <option value="">All Companies</option>
+                  {companies.map((comp) => (
+                    <option key={comp.id} value={comp.id}>
+                      {comp.name}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={filterCategory}
+                  onChange={(e) => setFilterCategory(e.target.value)}
+                  className="px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                >
+                  <option value="">All Categories</option>
+                  <option value="Insecticide">Insecticide</option>
+                  <option value="Herbicide">Herbicide</option>
+                  <option value="Fungicide">Fungicide</option>
+                  <option value="Growth Promoter">Growth Promoter</option>
+                </select>
+              </div>
+            </div>
+
             <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
-              {products.length} {products.length === 1 ? 'product' : 'products'}
+              {filteredProducts.length}{' '}
+              {filteredProducts.length === 1 ? 'product' : 'products'}
             </span>
           </div>
 
@@ -469,7 +571,7 @@ export default function Products() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
               <span className="ml-2 text-gray-600">Loading products...</span>
             </div>
-          ) : products.length === 0 ? (
+          ) : filteredProducts.length === 0 ? (
             <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
               <p className="text-gray-500">
                 No products found. Add your first product above.
@@ -477,10 +579,14 @@ export default function Products() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {products.map((product) => (
+              {filteredProducts.map((product) => (
                 <div
                   key={product.id}
-                  className="bg-white border border-gray-200 rounded-2xl p-4 hover:shadow-lg transition-shadow"
+                  className={`bg-white border rounded-2xl p-4 hover:shadow-lg transition-shadow ${
+                    product.stock === 0
+                      ? 'border-red-200 bg-red-50'
+                      : 'border-gray-200'
+                  }`}
                 >
                   {product.image_url ? (
                     <Image
@@ -522,8 +628,18 @@ export default function Products() {
                       </p>
                     )}
                     <p>
-                      <span className="font-semibold">Quantity:</span>{' '}
-                      {product.quantity} {product.quantity_unit || ''}
+                      <span className="font-semibold">Unit:</span>{' '}
+                      {product.quantity_unit || 'N/A'}
+                    </p>
+                    <p
+                      className={
+                        product.stock === 0
+                          ? 'text-red-600 font-bold'
+                          : 'text-green-600 font-bold'
+                      }
+                    >
+                      <span className="font-semibold">Stock:</span>{' '}
+                      {product.stock} {product.quantity_unit || ''}
                     </p>
                     {product.expiry_date && (
                       <p>

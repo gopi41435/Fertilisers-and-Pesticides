@@ -78,7 +78,7 @@ export default function Turnover() {
           total_amount,
           date,
           company_id,
-          companies (
+          companies!inner (
             name
           )
         `)
@@ -94,10 +94,16 @@ export default function Turnover() {
       
       if (salesError) throw salesError;
 
-      const purchases = (invoicesData || []) as Invoice[];
+      const rawInvoices = invoicesData || [];
+      // Transform to match Invoice interface: take first company if array, or use as-is
+      const purchases: Invoice[] = rawInvoices.map((inv: any) => ({
+        total_amount: inv.total_amount,
+        date: inv.date,
+        company_id: inv.company_id,
+        companies: Array.isArray(inv.companies) ? inv.companies[0] || null : inv.companies,
+      }));
       const sales = (salesData || []) as Sale[];
       
-
 
       // Calculate totals
       const totalPurchases = purchases.reduce((sum, invoice) => sum + invoice.total_amount, 0);
@@ -410,7 +416,7 @@ export default function Turnover() {
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
               <h2 className="text-2xl font-bold text-gray-800 mb-6">Top 5 Companies by Turnover</h2>
               <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={companyTurnover.slice(0, 5)} layout="horizontal">
+                <BarChart data={companyTurnover.slice(0, 5)} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis 
                     type="number"
@@ -519,3 +525,5 @@ export default function Turnover() {
     </div>
   );
 }
+
+

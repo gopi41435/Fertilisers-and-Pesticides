@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabaseClient';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import toast from 'react-hot-toast';
+import Select from 'react-select';
 
 interface Invoice {
   id: string;
@@ -84,9 +85,34 @@ export default function Invoices() {
     }
   }, []);
 
+  const getNextInvoiceNumber = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('invoice_number')
+        .order('created_at', { ascending: false })
+        .limit(1);
+      
+      if (error) throw error;
+      
+      if (data.length === 0) return '001';
+      
+      const lastNumber = parseInt(data[0].invoice_number, 10);
+      return (lastNumber + 1).toString().padStart(3, '0');
+    } catch (error) {
+      toast.error('Error generating invoice number');
+      return '001';
+    }
+  };
+
   useEffect(() => {
-    fetchInvoices();
-    fetchCompanies();
+    const initialize = async () => {
+      await fetchCompanies();
+      await fetchInvoices();
+      const nextNumber = await getNextInvoiceNumber();
+      setFormData(prev => ({ ...prev, invoice_number: nextNumber }));
+    };
+    initialize();
   }, [fetchInvoices, fetchCompanies]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -110,9 +136,10 @@ export default function Invoices() {
       
       toast.success('Invoice added successfully');
       fetchInvoices();
+      const nextNumber = await getNextInvoiceNumber();
       setFormData({ 
         company_id: '', 
-        invoice_number: '', 
+        invoice_number: nextNumber, 
         date: '', 
         total_amount: '' 
       });
@@ -263,30 +290,24 @@ export default function Invoices() {
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">Company *</label>
-              <select
-                value={formData.company_id}
-                onChange={(e) => setFormData({ ...formData, company_id: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all bg-white"
+              <Select
+                value={companies.find(c => c.id === formData.company_id) ? { value: formData.company_id, label: companies.find(c => c.id === formData.company_id)?.name } : null}
+                onChange={(selected) => setFormData({ ...formData, company_id: selected ? selected.value : '' })}
+                options={companies.map(comp => ({ value: comp.id, label: comp.name }))}
+                isSearchable
+                placeholder="Search and select a company..."
+                classNamePrefix="react-select"
                 required
-              >
-                <option value="">Choose a company...</option>
-                {companies.map((comp) => (
-                  <option key={comp.id} value={comp.id}>
-                    {comp.name}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
             
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Invoice Number *</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Invoice Number (Auto-generated)</label>
               <input
                 type="text"
                 value={formData.invoice_number}
-                onChange={(e) => setFormData({ ...formData, invoice_number: e.target.value })}
-                placeholder="Enter invoice number"
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
-                required
+                readOnly
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl bg-gray-100 cursor-not-allowed"
               />
             </div>
             

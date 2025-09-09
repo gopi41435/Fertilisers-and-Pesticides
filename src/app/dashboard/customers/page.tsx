@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import Select, { SingleValue } from "react-select";
+import toast from "react-hot-toast";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,15 +15,17 @@ const supabase = createClient(
 interface Customer {
   id: string;
   name: string;
-  email: string;
-  phone: string;
-  address: string;
+  email?: string;
+  phone?: string;
+  address?: string;
 }
 
 interface Product {
   id: string;
   name: string;
   price: number;
+  quantity: number;
+  quantity_unit?: string;
 }
 
 interface SaleItem {
@@ -55,6 +59,11 @@ interface JSPDFWithAutoTable extends jsPDF {
   };
 }
 
+interface SelectOption {
+  value: string;
+  label: string;
+}
+
 export default function SalesPage() {
   const [activeTab, setActiveTab] = useState<"customers" | "sales" | "reports">("sales");
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -76,10 +85,55 @@ export default function SalesPage() {
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
 
+  const fetchCustomers = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const { data, error } = await supabase.from("customers").select("*").order("name", { ascending: true });
+      if (error) throw error;
+      setCustomers(data || []);
+    } catch (error: unknown) {
+      toast.error(`Error fetching customers: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const fetchProducts = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.from("products").select("id, name, price, quantity, quantity_unit").order("name", { ascending: true });
+      if (error) throw error;
+      setProducts(data || []);
+    } catch (error: unknown) {
+      toast.error(`Error fetching products: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }, []);
+
+  const fetchSalesHistory = useCallback(async (customerId: string) => {
+    try {
+      setIsLoading(true);
+      const { data, error } = await supabase
+        .from("sales")
+        .select(`
+          *,
+          products (id, name, price, quantity, quantity_unit),
+          customers (id, name, email, phone, address)
+        `)
+        .eq("customer_id", customerId)
+        .order("purchase_date", { ascending: false });
+      if (error) throw error;
+      setSalesHistory(data || []);
+    } catch (error: unknown) {
+      toast.error(`Error fetching sales: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Load initial data when component mounts
   useEffect(() => {
     fetchCustomers();
     fetchProducts();
-  }, []);
+  }, [fetchCustomers, fetchProducts]);
 
   const calculateTotalPrice = useCallback(() => {
     let total = 0;
@@ -96,71 +150,37 @@ export default function SalesPage() {
     calculateTotalPrice();
   }, [calculateTotalPrice]);
 
-  const fetchCustomers = async () => {
-    setIsLoading(true);
-    const { data, error } = await supabase.from("customers").select("*");
-    if (!error && data) {
-      setCustomers(data);
-    }
-    setIsLoading(false);
-  };
-
-  const fetchProducts = async () => {
-    const { data, error } = await supabase.from("products").select("*");
-    if (!error && data) {
-      setProducts(data);
-    }
-  };
-
-  const fetchSalesHistory = async (customerId: string) => {
-    setIsLoading(true);
-    const { data, error } = await supabase
-      .from("sales")
-      .select(`
-        *,
-        products (*),
-        customers (*)
-      `)
-      .eq('customer_id', customerId)
-      .order('purchase_date', { ascending: false });
-
-    if (!error && data) {
-      setSalesHistory(data);
-    }
-    setIsLoading(false);
-  };
-
   const addCustomer = async () => {
     if (!customerName.trim()) {
-      alert("Please enter customer name");
+      toast.error("Please enter customer name");
       return;
     }
 
-    setIsLoading(true);
-    const { data, error } = await supabase
-      .from("customers")
-      .insert([
-        {
-          name: customerName,
-          email: customerEmail,
-          phone: customerPhone,
-          address: customerAddress,
-        },
-      ])
-      .select();
-
-    if (!error && data) {
+    try {
+      setIsLoading(true);
+      const { data, error } = await supabase
+        .from("customers")
+        .insert([
+          {
+            name: customerName,
+            email: customerEmail || null,
+            phone: customerPhone || null,
+            address: customerAddress || null,
+          },
+        ])
+        .select();
+      if (error) throw error;
       setCustomers([...customers, data[0]]);
       setCustomerName("");
       setCustomerEmail("");
       setCustomerPhone("");
       setCustomerAddress("");
-      alert("Customer added successfully!");
-    } else {
-      console.error("Error adding customer:", error);
-      alert("Error adding customer");
+      toast.success("Customer added successfully!");
+    } catch (error: unknown) {
+      toast.error(`Error adding customer: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   const addSaleItem = () => {
@@ -183,68 +203,94 @@ export default function SalesPage() {
 
   const recordSale = async () => {
     if (!selectedSaleCustomer) {
-      alert("Please select a customer");
+      toast.error("Please select a customer");
       return;
     }
 
-    // Validate at least one product is selected
     const validItems = saleItems.filter((item) => item.productId);
     if (validItems.length === 0) {
-      alert("Please select at least one product");
+      toast.error("Please select at least one product");
       return;
     }
 
-    setIsLoading(true);
-    const saleData = validItems.map((item) => {
-      const product = products.find((p) => p.id === item.productId);
-      const totalPrice = product ? product.price * item.quantity - item.discount : 0;
+    try {
+      setIsLoading(true);
+      
+      // Check stock availability for all items
+      for (const item of validItems) {
+        const product = products.find((p) => p.id === item.productId);
+        if (product && item.quantity > product.quantity) {
+          toast.error(`Not enough stock for ${product.name}. Available: ${product.quantity}`);
+          return;
+        }
+      }
+      
+      const saleData = validItems.map((item) => {
+        const product = products.find((p) => p.id === item.productId);
+        const totalPrice = product ? product.price * item.quantity - item.discount : 0;
 
-      return {
-        customer_id: selectedSaleCustomer,
-        product_id: item.productId,
-        quantity: item.quantity,
-        total_price: totalPrice,
-        discount_price: item.discount,
-        purchase_date: saleDate,
-      };
-    });
+        return {
+          customer_id: selectedSaleCustomer,
+          product_id: item.productId,
+          quantity: item.quantity,
+          total_price: totalPrice,
+          discount_price: item.discount || null,
+          purchase_date: saleDate,
+        };
+      });
 
-    const { error } = await supabase.from("sales").insert(saleData);
+      // Update product quantities
+      for (const item of validItems) {
+        const product = products.find((p) => p.id === item.productId);
+        if (product) {
+          const { error } = await supabase
+            .from("products")
+            .update({ quantity: product.quantity - item.quantity })
+            .eq("id", product.id);
+          
+          if (error) throw error;
+        }
+      }
 
-    if (error) {
-      console.error("Error recording sale:", error);
-      alert("Error recording sale");
-    } else {
-      alert("Sale recorded successfully!");
+      const { error } = await supabase.from("sales").insert(saleData);
+      if (error) throw error;
+
+      // Refresh products to get updated quantities
+      await fetchProducts();
+      
+      toast.success("Sale recorded successfully!");
       setSaleItems([{ productId: "", quantity: 1, discount: 0 }]);
       setSelectedSaleCustomer("");
+    } catch (error: unknown) {
+      toast.error(`Error recording sale: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   const generateSaleReceiptPDF = () => {
     if (!selectedSaleCustomer) {
-      alert("Please select a customer to generate a receipt");
+      toast.error("Please select a customer to generate a receipt");
       return;
     }
 
     const validItems = saleItems.filter((item) => item.productId);
     if (validItems.length === 0) {
-      alert("Please select at least one product to generate PDF");
+      toast.error("Please select at least one product to generate PDF");
       return;
     }
 
     const customer = customers.find((c) => c.id === selectedSaleCustomer);
     if (!customer) return;
 
-    const doc = new jsPDF();
+    const doc = new jsPDF() as JSPDFWithAutoTable;
 
     // Title
     doc.setFont("helvetica", "bold");
     doc.setFontSize(20);
     doc.setTextColor(15, 118, 110);
     doc.text("LAKSHMI PRIYA FERTILISERS", 105, 20, { align: "center" });
-    
+
     doc.setFontSize(16);
     doc.setTextColor(0, 0, 0);
     doc.text("SALE RECEIPT", 105, 30, { align: "center" });
@@ -252,7 +298,7 @@ export default function SalesPage() {
     // Sale Date
     doc.setFontSize(12);
     doc.setFont("helvetica", "normal");
-    doc.text(`Date: ${new Date(saleDate).toLocaleDateString('en-IN')}`, 14, 45);
+    doc.text(`Date: ${new Date(saleDate).toLocaleDateString("en-IN")}`, 14, 45);
 
     // Customer Info
     doc.setFont("helvetica", "bold");
@@ -288,12 +334,12 @@ export default function SalesPage() {
       headStyles: {
         fillColor: [15, 118, 110],
         textColor: 255,
-        fontStyle: 'bold'
+        fontStyle: "bold",
       },
-      styles: { 
-        font: "helvetica", 
+      styles: {
+        font: "helvetica",
         fontSize: 11,
-        cellPadding: 3
+        cellPadding: 3,
       },
       margin: { top: 90 },
       foot: [
@@ -315,161 +361,175 @@ export default function SalesPage() {
 
   const generateCustomerReportPDF = async () => {
     if (!selectedReportCustomer) {
-      alert("Please select a customer to generate a report");
+      toast.error("Please select a customer to generate a report");
       return;
     }
 
     const customer = customers.find((c) => c.id === selectedReportCustomer);
     if (!customer) return;
 
-    setIsLoading(true);
-    await fetchSalesHistory(selectedReportCustomer);
+    try {
+      setIsLoading(true);
+      await fetchSalesHistory(selectedReportCustomer);
 
-    const doc = new jsPDF() as JSPDFWithAutoTable;
+      const doc = new jsPDF() as JSPDFWithAutoTable;
 
-    // Title
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(20);
-    doc.setTextColor(15, 118, 110);
-    doc.text("LAKSHMI PRIYA FERTILISERS", 105, 20, { align: "center" });
-    
-    doc.setFontSize(16);
-    doc.setTextColor(0, 0, 0);
-    doc.text("CUSTOMER PURCHASE REPORT", 105, 30, { align: "center" });
-
-    // Report Date
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Report Generated: ${new Date().toLocaleDateString('en-IN')}`, 14, 45);
-
-    // Customer Info
-    doc.setFont("helvetica", "bold");
-    doc.text("Customer Details:", 14, 55);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Name: ${customer.name}`, 14, 62);
-    doc.text(`Email: ${customer.email || "N/A"}`, 14, 69);
-    doc.text(`Phone: ${customer.phone || "N/A"}`, 14, 76);
-    doc.text(`Address: ${customer.address || "N/A"}`, 14, 83);
-
-    if (salesHistory.length > 0) {
-      // Group sales by date and calculate totals
-      const salesByDate: SalesByDate = {};
-      
-      salesHistory.forEach((sale) => {
-        if (!salesByDate[sale.purchase_date]) {
-          salesByDate[sale.purchase_date] = { items: [], total: 0 };
-        }
-        salesByDate[sale.purchase_date].items.push(sale);
-        salesByDate[sale.purchase_date].total += sale.total_price;
-      });
-
-      let currentY = 95;
-      
-      // Create a summary table with SNO, DATE, Number Of Items, Total Sales
-      const summaryHeaders = [["SNO", "DATE", "NUMBER OF ITEMS", "TOTAL SALES"]];
-      const summaryRows = Object.entries(salesByDate).map(([date], index) => [
-        (index + 1).toString(),
-        new Date(date).toLocaleDateString('en-IN'),
-        salesByDate[date].items.length.toString(),
-        `₹${salesByDate[date].total.toFixed(2)}`
-      ]);
-
+      // Title
       doc.setFont("helvetica", "bold");
-      doc.text("SALES SUMMARY", 14, currentY);
-      currentY += 8;
-
-      autoTable(doc, {
-        head: summaryHeaders,
-        body: summaryRows,
-        startY: currentY,
-        theme: "grid",
-        headStyles: {
-          fillColor: [15, 118, 110],
-          textColor: 255,
-          fontStyle: 'bold'
-        },
-        styles: { 
-          font: "helvetica", 
-          fontSize: 11,
-          cellPadding: 3
-        },
-      });
-
-      currentY = doc.lastAutoTable.finalY + 20;
-
-      // Grand total
-      const grandTotal = salesHistory.reduce((total, sale) => total + sale.total_price, 0);
-      
-      doc.setFont("helvetica", "bold");
+      doc.setFontSize(20);
       doc.setTextColor(15, 118, 110);
-      doc.text(`GRAND TOTAL: ₹${grandTotal.toFixed(2)}`, 14, currentY);
-      currentY += 15;
+      doc.text("LAKSHMI PRIYA FERTILISERS", 105, 20, { align: "center" });
 
-      // Detailed sales for each date
-      Object.entries(salesByDate).forEach(([date, data]) => {
-        // Add page if needed
-        if (currentY > 200) {
-          doc.addPage();
-          currentY = 20;
-        }
+      doc.setFontSize(16);
+      doc.setTextColor(0, 0, 0);
+      doc.text("CUSTOMER PURCHASE REPORT", 105, 30, { align: "center" });
 
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(0, 0, 0);
-        doc.text(`DETAILED SALES FOR ${new Date(date).toLocaleDateString('en-IN')}`, 14, currentY);
-        currentY += 10;
+      // Report Date
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Report Generated: ${new Date().toLocaleDateString("en-IN")}`, 14, 45);
 
-        const detailHeaders = [["PRODUCT", "QUANTITY", "PRICE", "DISCOUNT", "TOTAL"]];
-        const detailRows = data.items.map((sale) => [
-          sale.products?.name || "",
-          sale.quantity.toString(),
-          `₹${sale.products?.price.toFixed(2) || "0.00"}`,
-          `₹${sale.discount_price.toFixed(2)}`,
-          `₹${sale.total_price.toFixed(2)}`
+      // Customer Info
+      doc.setFont("helvetica", "bold");
+      doc.text("Customer Details:", 14, 55);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Name: ${customer.name}`, 14, 62);
+      doc.text(`Email: ${customer.email || "N/A"}`, 14, 69);
+      doc.text(`Phone: ${customer.phone || "N/A"}`, 14, 76);
+      doc.text(`Address: ${customer.address || "N/A"}`, 14, 83);
+
+      if (salesHistory.length > 0) {
+        // Group sales by date and calculate totals
+        const salesByDate: SalesByDate = {};
+
+        salesHistory.forEach((sale) => {
+          if (!salesByDate[sale.purchase_date]) {
+            salesByDate[sale.purchase_date] = { items: [], total: 0 };
+          }
+          salesByDate[sale.purchase_date].items.push(sale);
+          salesByDate[sale.purchase_date].total += sale.total_price;
+        });
+
+        let currentY = 95;
+
+        // Create a summary table with SNO, DATE, Number Of Items, Total Sales
+        const summaryHeaders = [["SNO", "DATE", "NUMBER OF ITEMS", "TOTAL SALES"]];
+        const summaryRows = Object.entries(salesByDate).map(([date], index) => [
+          (index + 1).toString(),
+          new Date(date).toLocaleDateString("en-IN"),
+          salesByDate[date].items.length.toString(),
+          `₹${salesByDate[date].total.toFixed(2)}`,
         ]);
 
+        doc.setFont("helvetica", "bold");
+        doc.text("SALES SUMMARY", 14, currentY);
+        currentY += 8;
+
         autoTable(doc, {
-          head: detailHeaders,
-          body: detailRows,
+          head: summaryHeaders,
+          body: summaryRows,
           startY: currentY,
           theme: "grid",
           headStyles: {
-            fillColor: [59, 130, 246],
+            fillColor: [15, 118, 110],
             textColor: 255,
-            fontStyle: 'bold'
+            fontStyle: "bold",
           },
-          styles: { 
-            font: "helvetica", 
-            fontSize: 10,
-            cellPadding: 2
+          styles: {
+            font: "helvetica",
+            fontSize: 11,
+            cellPadding: 3,
           },
         });
 
-        currentY = doc.lastAutoTable.finalY + 15;
-        
-        // Add a separator between dates
-        if (currentY < doc.internal.pageSize.height - 50) {
-          doc.setDrawColor(200, 200, 200);
-          doc.line(14, currentY, doc.internal.pageSize.width - 14, currentY);
-          currentY += 10;
-        }
-      });
-    } else {
-      doc.text("No sales records found for this customer.", 14, 95);
-    }
+        currentY = doc.lastAutoTable.finalY + 20;
 
-    doc.save(`${customer.name}_sales_report.pdf`);
-    setIsLoading(false);
+        // Grand total
+        const grandTotal = salesHistory.reduce((total, sale) => total + sale.total_price, 0);
+
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(15, 118, 110);
+        doc.text(`GRAND TOTAL: ₹${grandTotal.toFixed(2)}`, 14, currentY);
+        currentY += 15;
+
+        // Detailed sales for each date
+        Object.entries(salesByDate).forEach(([date, data]) => {
+          if (currentY > 200) {
+            doc.addPage();
+            currentY = 20;
+          }
+
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(0, 0, 0);
+          doc.text(`DETAILED SALES FOR ${new Date(date).toLocaleDateString("en-IN")}`, 14, currentY);
+          currentY += 10;
+
+          const detailHeaders = [["PRODUCT", "QUANTITY", "PRICE", "DISCOUNT", "TOTAL"]];
+          const detailRows = data.items.map((sale) => [
+            sale.products?.name || "",
+            sale.quantity.toString(),
+            `₹${sale.products?.price.toFixed(2) || "0.00"}`,
+            `₹${sale.discount_price.toFixed(2)}`,
+            `₹${sale.total_price.toFixed(2)}`,
+          ]);
+
+          autoTable(doc, {
+            head: detailHeaders,
+            body: detailRows,
+            startY: currentY,
+            theme: "grid",
+            headStyles: {
+              fillColor: [59, 130, 246],
+              textColor: 255,
+              fontStyle: "bold",
+            },
+            styles: {
+              font: "helvetica",
+              fontSize: 10,
+              cellPadding: 2,
+            },
+          });
+
+          currentY = doc.lastAutoTable.finalY + 15;
+
+          if (currentY < doc.internal.pageSize.height - 50) {
+            doc.setDrawColor(200, 200, 200);
+            doc.line(14, currentY, doc.internal.pageSize.width - 14, currentY);
+            currentY += 10;
+          }
+        });
+      } else {
+        doc.text("No sales records found for this customer.", 14, 95);
+      }
+
+      doc.save(`${customer.name}_sales_report.pdf`);
+    } catch (error: unknown) {
+      toast.error(`Error generating report: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fixed onChange handlers for Select components
+  const handleSaleCustomerChange = (selected: SingleValue<SelectOption>) => {
+    setSelectedSaleCustomer(selected ? selected.value : "");
+  };
+
+  const handleReportCustomerChange = (selected: SingleValue<SelectOption>) => {
+    setSelectedReportCustomer(selected ? selected.value : "");
+    if (selected) {
+      fetchSalesHistory(selected.value);
+    }
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-teal-50 via-blue-50 to-cyan-50 p-4 md:p-6">
       <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-2xl p-6 md:p-8">
         {/* Header */}
-        <div className=" mb-8">
+        <div className="mb-8">
           <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-teal-600 to-blue-600 bg-clip-text text-transparent">
-             Sales Management System
+            Sales Management System
           </h1>
-          
         </div>
 
         {/* Tabs */}
@@ -478,15 +538,13 @@ export default function SalesPage() {
             <button
               key={tab}
               className={`flex-1 py-3 px-4 text-sm font-semibold rounded-xl transition-all duration-200 ${
-                activeTab === tab
-                  ? "bg-white text-teal-600 shadow-md"
-                  : "text-gray-500 hover:text-gray-700"
+                activeTab === tab ? "bg-white text-teal-600 shadow-md" : "text-gray-500 hover:text-gray-700"
               }`}
               onClick={() => setActiveTab(tab)}
             >
-              {tab === "customers" && "👥 Customers"}
-              {tab === "sales" && "💰 Record Sale"}
-              {tab === "reports" && "📊 Reports"}
+              {tab === "customers" && "Customers"}
+              {tab === "sales" && "Record Sale"}
+              {tab === "reports" && "Reports"}
             </button>
           ))}
         </div>
@@ -514,6 +572,7 @@ export default function SalesPage() {
                     onChange={(e) => setCustomerName(e.target.value)}
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
                     placeholder="Enter customer name"
+                    required
                   />
                 </div>
                 <div>
@@ -552,35 +611,55 @@ export default function SalesPage() {
                 disabled={isLoading}
                 className="bg-gradient-to-r from-teal-600 to-blue-600 hover:from-teal-700 hover:to-blue-700 text-white font-semibold py-3 px-8 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg"
               >
-                {isLoading ? "Adding..." : "➕ Add Customer"}
+                {isLoading ? "Adding..." : "Add Customer"}
               </button>
             </div>
 
             {/* Customer List */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
               <h2 className="text-2xl font-bold text-gray-800 mb-6">Customer List</h2>
-              <div className="overflow-x-auto rounded-2xl border border-gray-200">
-                <table className="w-full">
-                  <thead>
-                    <tr className="bg-gradient-to-r from-teal-600 to-blue-600 text-white">
-                      <th className="px-6 py-4 text-left font-semibold">Name</th>
-                      <th className="px-6 py-4 text-left font-semibold">Email</th>
-                      <th className="px-6 py-4 text-left font-semibold">Phone</th>
-                      <th className="px-6 py-4 text-left font-semibold">Address</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {customers.map((customer) => (
-                      <tr key={customer.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4 font-medium text-gray-900">{customer.name}</td>
-                        <td className="px-6 py-4 text-gray-600">{customer.email || "-"}</td>
-                        <td className="px-6 py-4 text-gray-600">{customer.phone || "-"}</td>
-                        <td className="px-6 py-4 text-gray-600">{customer.address || "-"}</td>
+              {customers.length === 0 ? (
+                <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-12 w-12 mx-auto text-gray-400 mb-3"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                  <p className="text-gray-500">No customers found. Add a customer above.</p>
+                </div>
+             ) : (
+                <div className="overflow-x-auto rounded-2xl border border-gray-200">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-gradient-to-r from-teal-600 to-blue-600 text-white">
+                        <th className="px-6 py-4 text-left font-semibold">Name</th>
+                        <th className="px-6 py-4 text-left font-semibold">Email</th>
+                        <th className="px-6 py-4 text-left font-semibold">Phone</th>
+                        <th className="px-6 py-4 text-left font-semibold">Address</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {customers.map((customer) => (
+                        <tr key={customer.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-6 py-4 font-medium text-gray-900">{customer.name}</td>
+                          <td className="px-6 py-4 text-gray-600">{customer.email || "-"}</td>
+                          <td className="px-6 py-4 text-gray-600">{customer.phone || "-"}</td>
+                          <td className="px-6 py-4 text-gray-600">{customer.address || "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -590,52 +669,67 @@ export default function SalesPage() {
           <div className="space-y-8">
             <div className="bg-gradient-to-r from-teal-50 to-blue-50 p-6 rounded-2xl">
               <h2 className="text-2xl font-bold text-gray-800 mb-6">Record New Sale</h2>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Select Customer *</label>
-                  <select
-                    value={selectedSaleCustomer}
-                    onChange={(e) => setSelectedSaleCustomer(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all bg-white"
-                  >
-                    <option value="">Choose a customer...</option>
-                    {customers.map((customer) => (
-                      <option key={customer.id} value={customer.id}>
-                        {customer.name}
-                      </option>
-                    ))}
-                  </select>
+                  <Select
+                    value={
+                      customers.find((c) => c.id === selectedSaleCustomer)
+                        ? { value: selectedSaleCustomer, label: customers.find((c) => c.id === selectedSaleCustomer)?.name || '' }
+                        : null
+                    }
+                    onChange={handleSaleCustomerChange}
+                    options={customers.map((customer) => ({ value: customer.id, label: customer.name }))}
+                    isSearchable
+                    placeholder="Search and select a customer..."
+                    classNamePrefix="react-select"
+                    required
+                  />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Sale Date</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Sale Date *</label>
                   <input
                     type="date"
                     value={saleDate}
                     onChange={(e) => setSaleDate(e.target.value)}
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
+                    required
                   />
                 </div>
               </div>
 
               <h3 className="text-lg font-semibold text-gray-800 mb-4">Products</h3>
-              
+
               {saleItems.map((item, index) => (
                 <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-4 p-4 bg-white rounded-xl border border-gray-200">
                   <div className="md:col-span-5">
                     <label className="block text-sm font-semibold text-gray-700 mb-2">Product</label>
-                    <select
-                      value={item.productId}
-                      onChange={(e) => updateSaleItem(index, "productId", e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
-                    >
-                      <option value="">Select product...</option>
-                      {products.map((product) => (
-                        <option key={product.id} value={product.id}>
-                          {product.name} (₹{product.price.toFixed(2)})
-                        </option>
-                      ))}
-                    </select>
+                    <Select
+                      value={
+                        products.find((p) => p.id === item.productId)
+                          ? { 
+                              value: item.productId, 
+                              label: `${products.find((p) => p.id === item.productId)?.name || ''} - ${products.find((p) => p.id === item.productId)?.quantity_unit || 'unit'} - ₹${products.find((p) => p.id === item.productId)?.price.toFixed(2) || '0.00'} (Stock: ${products.find((p) => p.id === item.productId)?.quantity || 0}${products.find((p) => p.id === item.productId)?.quantity === 0 ? ' - OUT OF STOCK' : (products.find((p) => p.id === item.productId)?.quantity || 0) <= 5 ? ' - LOW STOCK' : ''})`
+                            }
+                          : null
+                      }
+                      onChange={(selected: SingleValue<SelectOption>) =>
+                        updateSaleItem(index, "productId", selected ? selected.value : "")
+                      }
+                      options={products.map((product) => ({
+                        value: product.id,
+                        label: `${product.name} - ${product.quantity_unit || 'unit'} - (Stock: ${product.quantity}${product.quantity === 0 ? ' - OUT OF STOCK' : product.quantity <= 5 ? ' - LOW STOCK' : ''})`
+                      }))}
+                      isOptionDisabled={(option) => {
+                        const product = products.find(p => p.id === option.value);
+                        return product ? product.quantity === 0 : false;
+                      }}
+                      isSearchable
+                      placeholder="Search and select a product..."
+                      classNamePrefix="react-select"
+                      isClearable
+                    />
                   </div>
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold text-gray-700 mb-2">Quantity</label>
@@ -656,23 +750,19 @@ export default function SalesPage() {
                       value={item.discount}
                       onChange={(e) => updateSaleItem(index, "discount", Number(e.target.value))}
                       className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
-                      placeholder="0.00"
                     />
                   </div>
                   <div className="md:col-span-2 flex items-end">
                     <div className="w-full p-3 bg-gray-50 rounded-xl">
                       <p className="text-sm font-semibold text-gray-700">Item Total</p>
                       <p className="text-lg font-bold text-teal-600">
-                        ₹{(
-                          (products.find((p) => p.id === item.productId)?.price || 0) * item.quantity -
-                          item.discount
-                        ).toFixed(2)}
+                        ₹{((products.find((p) => p.id === item.productId)?.price || 0) * item.quantity - item.discount).toFixed(2)}
                       </p>
                     </div>
                   </div>
                   <div className="md:col-span-1 flex items-end justify-center">
                     {saleItems.length > 1 && (
-                      <button 
+                      <button
                         onClick={() => removeSaleItem(index)}
                         className="p-3 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl transition-colors"
                       >
@@ -708,6 +798,7 @@ export default function SalesPage() {
                 </button>
                 <button
                   onClick={generateSaleReceiptPDF}
+                  disabled={isLoading}
                   className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-4 px-8 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg"
                 >
                   📄 Generate Receipt
@@ -722,23 +813,23 @@ export default function SalesPage() {
           <div className="space-y-8">
             <div className="bg-gradient-to-r from-teal-50 to-blue-50 p-6 rounded-2xl">
               <h2 className="text-2xl font-bold text-gray-800 mb-6">Generate Customer Reports</h2>
-              
+
               <div className="mb-6">
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Select Customer</label>
-                <select
-                  value={selectedReportCustomer}
-                  onChange={(e) => setSelectedReportCustomer(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all bg-white"
-                >
-                    <option value="">Choose a customer...</option>
-                    {customers.map((customer) => (
-                      <option key={customer.id} value={customer.id}>
-                        {customer.name}
-                      </option>
-                    ))}
-                </select>
+                <Select
+                  value={
+                    customers.find((c) => c.id === selectedReportCustomer)
+                      ? { value: selectedReportCustomer, label: customers.find((c) => c.id === selectedReportCustomer)?.name || '' }
+                      : null
+                  }
+                  onChange={handleReportCustomerChange}
+                  options={customers.map((customer) => ({ value: customer.id, label: customer.name }))}
+                  isSearchable
+                  placeholder="Search and select a customer..."
+                  classNamePrefix="react-select"
+                />
               </div>
-              
+
               <button
                 onClick={generateCustomerReportPDF}
                 disabled={isLoading || !selectedReportCustomer}
@@ -766,7 +857,7 @@ export default function SalesPage() {
                       {salesHistory.map((sale) => (
                         <tr key={sale.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-6 py-4 font-medium text-gray-900">
-                            {new Date(sale.purchase_date).toLocaleDateString('en-IN')}
+                            {new Date(sale.purchase_date).toLocaleDateString("en-IN")}
                           </td>
                           <td className="px-6 py-4 text-gray-600">{sale.products?.name}</td>
                           <td className="px-6 py-4 text-gray-600">{sale.quantity}</td>
@@ -785,4 +876,3 @@ export default function SalesPage() {
     </div>
   );
 }
-
