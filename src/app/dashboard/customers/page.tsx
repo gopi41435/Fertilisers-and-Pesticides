@@ -526,21 +526,21 @@ export default function SalesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-teal-50 via-blue-50 to-cyan-50 p-2 sm:p-4 md:p-6">
-      <div className="max-w-6xl mx-auto bg-white rounded-xl sm:rounded-2xl shadow-lg sm:shadow-2xl p-4 sm:p-6 md:p-8">
+    <div className="min-h-screen bg-gradient-to-br from-teal-50 via-blue-50 to-cyan-100 p-2 sm:p-4 md:p-6 transition-colors duration-300">
+      <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-2xl transform transition-all duration-500 hover:shadow-3xl p-4 sm:p-6 md:p-8">
         {/* Header */}
-        <div className="mb-4 sm:mb-6 md:mb-8">
-          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-teal-600 to-blue-600 bg-clip-text text-transparent">
+        <div className="mb-6 sm:mb-8 md:mb-10 animate-fadeIn">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold bg-gradient-to-r from-teal-600 to-blue-700 bg-clip-text text-transparent drop-shadow-lg animate-pulse-slow">
             Sales Management System
           </h1>
         </div>
 
         {/* Tabs */}
-        <div className="flex flex-col sm:flex-row space-y-1 sm:space-y-0 sm:space-x-1 bg-gray-100 p-1 rounded-xl mb-4 sm:mb-6 md:mb-8">
+        <div className="flex flex-col sm:flex-row space-y-1 sm:space-y-0 sm:space-x-1 bg-gray-100 p-1 rounded-xl mb-6 sm:mb-8 md:mb-10 animate-slideIn">
           {(['customers', 'sales', 'reports'] as const).map((tab) => (
             <button
               key={tab}
-              className={`flex-1 py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm font-semibold rounded-lg sm:rounded-xl transition-all duration-200 ${activeTab === tab ? 'bg-white text-teal-600 shadow-md' : 'text-gray-500 hover:text-gray-700'
+              className={`flex-1 py-2 sm:py-3 px-3 sm:px-4 text-sm sm:text-base font-semibold rounded-lg sm:rounded-xl transition-all duration-300 ${activeTab === tab ? 'bg-white text-teal-600 shadow-md transform scale-105' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
                 }`}
               onClick={() => setActiveTab(tab)}
             >
@@ -553,57 +553,57 @@ export default function SalesPage() {
 
         {isLoading && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white p-4 sm:p-6 rounded-xl sm:rounded-2xl shadow-2xl flex items-center space-x-3">
-              <div className="animate-spin rounded-full h-6 w-6 sm:h-8 sm:w-8 border-b-2 border-teal-600"></div>
-              <span className="text-sm sm:text-base text-gray-700">Processing...</span>
+            <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-2xl flex items-center space-x-4 animate-pulse">
+              <div className="animate-spin rounded-full h-8 w-8 sm:h-10 sm:w-10 border-t-2 border-b-2 border-teal-600"></div>
+              <span className="text-base sm:text-lg text-gray-700">Processing...</span>
             </div>
           </div>
         )}
 
         {/* Customers Tab */}
         {activeTab === 'customers' && (
-          <div className="space-y-6 sm:space-y-8">
-            <div className="bg-gradient-to-r from-teal-50 to-blue-50 p-4 sm:p-6 rounded-xl sm:rounded-2xl">
-              <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-4 sm:mb-6">Add New Customer</h2>
+          <div className="space-y-6 sm:space-y-8 animate-fadeInUp">
+            <div className="bg-gradient-to-r from-teal-50 to-blue-100 p-4 sm:p-6 rounded-2xl shadow-md mb-6 sm:mb-8 transform transition-all duration-300 hover:scale-101">
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 mb-4 sm:mb-6 animate-slideIn">Add New Customer</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
-                <div>
-                  <label className="block text-xs sm:text-sm md:text-sm font-semibold text-gray-700 mb-2">Name *</label>
+                <div className="transform transition-all duration-300 hover:shadow-md">
+                  <label className="block text-xs sm:text-sm md:text-base font-semibold text-gray-700 mb-2">Name *</label>
                   <input
                     type="text"
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
-                    className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all text-xs sm:text-sm"
+                    className="w-full px-4 py-2 sm:py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all duration-300 text-sm sm:text-base bg-white shadow-inner"
                     placeholder="Enter customer name"
                     required
                   />
                 </div>
-                <div>
-                  <label className="block text-xs sm:text-sm md:text-sm font-semibold text-gray-700 mb-2">Email</label>
+                <div className="transform transition-all duration-300 hover:shadow-md">
+                  <label className="block text-xs sm:text-sm md:text-base font-semibold text-gray-700 mb-2">Email</label>
                   <input
                     type="email"
                     value={customerEmail}
                     onChange={(e) => setCustomerEmail(e.target.value)}
-                    className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all text-xs sm:text-sm"
+                    className="w-full px-4 py-2 sm:py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all duration-300 text-sm sm:text-base bg-white shadow-inner"
                     placeholder="Enter email address"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs sm:text-sm md:text-sm font-semibold text-gray-700 mb-2">Phone</label>
+                <div className="transform transition-all duration-300 hover:shadow-md">
+                  <label className="block text-xs sm:text-sm md:text-base font-semibold text-gray-700 mb-2">Phone</label>
                   <input
                     type="text"
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
-                    className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all text-xs sm:text-sm"
+                    className="w-full px-4 py-2 sm:py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all duration-300 text-sm sm:text-base bg-white shadow-inner"
                     placeholder="Enter phone number"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs sm:text-sm md:text-sm font-semibold text-gray-700 mb-2">Address</label>
+                <div className="transform transition-all duration-300 hover:shadow-md">
+                  <label className="block text-xs sm:text-sm md:text-base font-semibold text-gray-700 mb-2">Address</label>
                   <input
                     type="text"
                     value={customerAddress}
                     onChange={(e) => setCustomerAddress(e.target.value)}
-                    className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all text-xs sm:text-sm"
+                    className="w-full px-4 py-2 sm:py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all duration-300 text-sm sm:text-base bg-white shadow-inner"
                     placeholder="Enter address"
                   />
                 </div>
@@ -611,20 +611,20 @@ export default function SalesPage() {
               <button
                 onClick={addCustomer}
                 disabled={isLoading}
-                className="w-full sm:w-auto bg-gradient-to-r from-teal-600 to-blue-600 hover:from-teal-700 hover:to-blue-700 text-white font-semibold py-2 sm:py-3 px-4 sm:px-6 rounded-lg sm:rounded-xl transition-all duration-200 transform hover:scale-105 shadow-md"
+                className="w-full sm:w-auto bg-gradient-to-r from-teal-600 to-blue-700 hover:from-teal-700 hover:to-blue-800 text-white font-semibold py-2 sm:py-3 px-6 rounded-xl transition-all duration-300 hover:scale-105 shadow-lg animate-bounce-slow text-sm sm:text-base"
               >
                 {isLoading ? 'Adding...' : 'Add Customer'}
               </button>
             </div>
 
             {/* Customer List */}
-            <div className="bg-white p-4 sm:p-6 rounded-xl sm:rounded-2xl shadow-sm border border-gray-100">
-              <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-4 sm:mb-6">Customer List</h2>
+            <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-md border border-gray-100 animate-fadeInUp">
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 mb-4 sm:mb-6 animate-slideIn">Customer List</h2>
               {customers.length === 0 ? (
-                <div className="text-center py-6 sm:py-8 md:py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                <div className="text-center py-8 sm:py-10 md:py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300 animate-fadeIn">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className="h-8 w-8 sm:h-10 sm:w-10 md:h-12 md:w-12 mx-auto text-gray-400 mb-3 sm:mb-4"
+                    className="h-10 w-10 sm:h-12 sm:w-12 md:h-14 md:w-14 mx-auto text-gray-400 mb-4"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -642,20 +642,20 @@ export default function SalesPage() {
                 <div className="overflow-x-auto rounded-2xl border border-gray-200">
                   <table className="min-w-full">
                     <thead>
-                      <tr className="bg-gradient-to-r from-teal-600 to-blue-600 text-white">
-                        <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Name</th>
-                        <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Email</th>
-                        <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Phone</th>
-                        <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Address</th>
+                      <tr className="bg-gradient-to-r from-teal-600 to-blue-700 text-white">
+                        <th className="px-4 py-3 text-left text-sm sm:text-base font-semibold">Name</th>
+                        <th className="px-4 py-3 text-left text-sm sm:text-base font-semibold">Email</th>
+                        <th className="px-4 py-3 text-left text-sm sm:text-base font-semibold">Phone</th>
+                        <th className="px-4 py-3 text-left text-sm sm:text-base font-semibold">Address</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {customers.map((customer) => (
-                        <tr key={customer.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-gray-900">{customer.name}</td>
-                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600">{customer.email || '-'}</td>
-                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600">{customer.phone || '-'}</td>
-                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600">{customer.address || '-'}</td>
+                        <tr key={customer.id} className="hover:bg-gray-50 transition-all duration-300 hover:shadow-md">
+                          <td className="px-4 py-3 text-sm sm:text-base font-medium text-gray-900">{customer.name}</td>
+                          <td className="px-4 py-3 text-sm sm:text-base text-gray-600">{customer.email || '-'}</td>
+                          <td className="px-4 py-3 text-sm sm:text-base text-gray-600">{customer.phone || '-'}</td>
+                          <td className="px-4 py-3 text-sm sm:text-base text-gray-600">{customer.address || '-'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -668,13 +668,13 @@ export default function SalesPage() {
 
         {/* Record Sale Tab */}
         {activeTab === 'sales' && (
-          <div className="space-y-6 sm:space-y-8">
-            <div className="bg-gradient-to-r from-teal-50 to-blue-50 p-4 sm:p-6 rounded-xl sm:rounded-2xl">
-              <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-4 sm:mb-6">Record New Sale</h2>
+          <div className="space-y-6 sm:space-y-8 animate-fadeInUp">
+            <div className="bg-gradient-to-r from-teal-50 to-blue-100 p-4 sm:p-6 rounded-2xl shadow-md mb-6 sm:mb-8 transform transition-all duration-300 hover:scale-101">
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 mb-4 sm:mb-6 animate-slideIn">Record New Sale</h2>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
-                <div>
-                  <label className="block text-xs sm:text-sm md:text-sm font-semibold text-gray-700 mb-2">Select Customer *</label>
+                <div className="transform transition-all duration-300 hover:shadow-md">
+                  <label className="block text-xs sm:text-sm md:text-base font-semibold text-gray-700 mb-2">Select Customer *</label>
                   <Select
                     value={
                       customers.find((c) => c.id === selectedSaleCustomer)
@@ -686,28 +686,28 @@ export default function SalesPage() {
                     isSearchable
                     placeholder="Search and select a customer..."
                     classNamePrefix="react-select"
-                    className="w-full text-xs sm:text-sm"
+                    className="w-full text-sm sm:text-base"
                     required
                   />
                 </div>
-                <div>
-                  <label className="block text-xs sm:text-sm md:text-sm font-semibold text-gray-700 mb-2">Sale Date *</label>
+                <div className="transform transition-all duration-300 hover:shadow-md">
+                  <label className="block text-xs sm:text-sm md:text-base font-semibold text-gray-700 mb-2">Sale Date *</label>
                   <input
                     type="date"
                     value={saleDate}
                     onChange={(e) => setSaleDate(e.target.value)}
-                    className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all text-xs sm:text-sm"
+                    className="w-full px-4 py-2 sm:py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all duration-300 text-sm sm:text-base bg-white shadow-inner"
                     required
                   />
                 </div>
               </div>
 
-              <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4 sm:mb-6">Products</h3>
+              <h3 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-800 mb-4 sm:mb-6 animate-slideIn">Products</h3>
 
               {saleItems.map((item, index) => (
-                <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-2 sm:gap-4 mb-2 sm:mb-4 p-2 sm:p-4 bg-white rounded-lg sm:rounded-xl border border-gray-200">
+                <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-2 sm:gap-4 mb-2 sm:mb-4 p-3 sm:p-4 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300">
                   <div className="md:col-span-5">
-                    <label className="block text-xs sm:text-sm md:text-sm font-semibold text-gray-700 mb-2">Product</label>
+                    <label className="block text-xs sm:text-sm md:text-base font-semibold text-gray-700 mb-2">Product</label>
                     <Select
                       value={
                         products.find((p) => p.id === item.productId)
@@ -731,33 +731,33 @@ export default function SalesPage() {
                       isSearchable
                       placeholder="Search and select a product..."
                       classNamePrefix="react-select"
-                      className="w-full text-xs sm:text-sm"
+                      className="w-full text-sm sm:text-base"
                       isClearable
                     />
                   </div>
                   <div className="md:col-span-2">
-                    <label className="block text-xs sm:text-sm md:text-sm font-semibold text-gray-700 mb-2">Quantity</label>
+                    <label className="block text-xs sm:text-sm md:text-base font-semibold text-gray-700 mb-2">Quantity</label>
                     <input
                       type="number"
                       min="1"
                       value={item.quantity}
                       onChange={(e) => updateSaleItem(index, 'quantity', Number(e.target.value))}
-                      className="w-full px-2 sm:px-3 py-1 sm:py-2 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all text-xs sm:text-sm"
+                      className="w-full px-3 sm:px-4 py-1 sm:py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all duration-300 text-sm sm:text-base bg-white shadow-inner"
                     />
                   </div>
                   <div className="md:col-span-2">
-                    <label className="block text-xs sm:text-sm md:text-sm font-semibold text-gray-700 mb-2">Discount (₹)</label>
+                    <label className="block text-xs sm:text-sm md:text-base font-semibold text-gray-700 mb-2">Discount (₹)</label>
                     <input
                       type="number"
                       min="0"
                       step="0.01"
                       value={item.discount}
                       onChange={(e) => updateSaleItem(index, 'discount', Number(e.target.value))}
-                      className="w-full px-2 sm:px-3 py-1 sm:py-2 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all text-xs sm:text-sm"
+                      className="w-full px-3 sm:px-4 py-1 sm:py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all duration-300 text-sm sm:text-base bg-white shadow-inner"
                     />
                   </div>
                   <div className="md:col-span-2 flex items-end">
-                    <div className="w-full p-2 sm:p-3 bg-gray-50 rounded-lg sm:rounded-xl">
+                    <div className="w-full p-2 sm:p-3 bg-gray-50 rounded-xl">
                       <p className="text-xs sm:text-sm font-semibold text-gray-700">Item Total</p>
                       <p className="text-base sm:text-lg font-bold text-teal-600">
                         ₹{((products.find((p) => p.id === item.productId)?.price || 0) * item.quantity - item.discount).toFixed(2)}
@@ -768,7 +768,7 @@ export default function SalesPage() {
                     {saleItems.length > 1 && (
                       <button
                         onClick={() => removeSaleItem(index)}
-                        className="p-1 sm:p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg sm:rounded-xl transition-colors"
+                        className="p-1 sm:p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl transition-colors duration-300"
                       >
                         🗑️
                       </button>
@@ -779,16 +779,16 @@ export default function SalesPage() {
 
               <button
                 onClick={addSaleItem}
-                className="flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 sm:py-3 px-4 sm:px-6 rounded-lg sm:rounded-xl transition-all duration-200 mb-4 sm:mb-6"
+                className="flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 sm:py-3 px-4 sm:px-6 rounded-xl transition-all duration-300 hover:scale-105 mb-4 sm:mb-6 animate-pulse-slow"
               >
                 <span>➕</span>
                 <span>Add Another Product</span>
               </button>
 
-              <div className="bg-white p-4 sm:p-6 rounded-2xl border border-gray-200 mb-4 sm:mb-6">
+              <div className="bg-white p-4 sm:p-6 rounded-2xl border border-gray-200 mb-4 sm:mb-6 shadow-md animate-fadeIn">
                 <div className="flex justify-between items-center">
-                  <span className="text-xl sm:text-2xl font-bold text-gray-800">Total Price:</span>
-                  <span className="text-2xl sm:text-3xl font-bold text-teal-600">₹{totalPrice.toFixed(2)}</span>
+                  <span className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800">Total Price:</span>
+                  <span className="text-2xl sm:text-3xl md:text-4xl font-bold text-teal-600">₹{totalPrice.toFixed(2)}</span>
                 </div>
               </div>
 
@@ -796,14 +796,14 @@ export default function SalesPage() {
                 <button
                   onClick={recordSale}
                   disabled={isLoading}
-                  className="flex-1 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white font-semibold py-2 sm:py-3 px-4 sm:px-6 rounded-lg sm:rounded-xl transition-all duration-200 transform hover:scale-105 shadow-md text-xs sm:text-sm"
+                  className="flex-1 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white font-semibold py-2 sm:py-3 px-6 rounded-xl transition-all duration-300 hover:scale-105 shadow-lg animate-bounce-slow text-sm sm:text-base"
                 >
                   {isLoading ? '🔄 Processing...' : '💾 Record Sale'}
                 </button>
                 <button
                   onClick={generateSaleReceiptPDF}
                   disabled={isLoading}
-                  className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-2 sm:py-3 px-4 sm:px-6 rounded-lg sm:rounded-xl transition-all duration-200 transform hover:scale-105 shadow-md text-xs sm:text-sm"
+                  className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-2 sm:py-3 px-6 rounded-xl transition-all duration-300 hover:scale-105 shadow-lg animate-bounce-slow text-sm sm:text-base"
                 >
                   📄 Generate Receipt
                 </button>
@@ -814,12 +814,12 @@ export default function SalesPage() {
 
         {/* Reports Tab */}
         {activeTab === 'reports' && (
-          <div className="space-y-6 sm:space-y-8">
-            <div className="bg-gradient-to-r from-teal-50 to-blue-50 p-4 sm:p-6 rounded-xl sm:rounded-2xl">
-              <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-4 sm:mb-6">Generate Customer Reports</h2>
+          <div className="space-y-6 sm:space-y-8 animate-fadeInUp">
+            <div className="bg-gradient-to-r from-teal-50 to-blue-100 p-4 sm:p-6 rounded-2xl shadow-md mb-6 sm:mb-8 transform transition-all duration-300 hover:scale-101">
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 mb-4 sm:mb-6 animate-slideIn">Generate Customer Reports</h2>
 
               <div className="mb-4 sm:mb-6">
-                <label className="block text-xs sm:text-sm md:text-sm font-semibold text-gray-700 mb-2">Select Customer</label>
+                <label className="block text-xs sm:text-sm md:text-base font-semibold text-gray-700 mb-2">Select Customer</label>
                 <Select
                   value={
                     customers.find((c) => c.id === selectedReportCustomer)
@@ -831,42 +831,42 @@ export default function SalesPage() {
                   isSearchable
                   placeholder="Search and select a customer..."
                   classNamePrefix="react-select"
-                  className="w-full text-xs sm:text-sm"
+                  className="w-full text-sm sm:text-base"
                 />
               </div>
 
               <button
                 onClick={generateCustomerReportPDF}
                 disabled={isLoading || !selectedReportCustomer}
-                className="w-full sm:w-auto bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-2 sm:py-3 px-4 sm:px-6 rounded-lg sm:rounded-xl transition-all duration-200 transform hover:scale-105 shadow-md text-xs sm:text-sm"
+                className="w-full sm:w-auto bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-2 sm:py-3 px-6 rounded-xl transition-all duration-300 hover:scale-105 shadow-lg animate-bounce-slow text-sm sm:text-base"
               >
                 {isLoading ? '📊 Generating Report...' : '📊 Generate Sales Report'}
               </button>
             </div>
 
             {salesHistory.length > 0 && (
-              <div className="bg-white p-4 sm:p-6 rounded-xl sm:rounded-2xl shadow-sm border border-gray-100">
-                <h3 className="text-xl sm:text-2xl font-bold text-gray-800 mb-4 sm:mb-6">Sales History</h3>
+              <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-md border border-gray-100 animate-fadeInUp">
+                <h3 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 mb-4 sm:mb-6 animate-slideIn">Sales History</h3>
                 <div className="overflow-x-auto rounded-2xl border border-gray-200">
                   <table className="min-w-full">
                     <thead>
-                      <tr className="bg-gradient-to-r from-teal-600 to-blue-600 text-white">
-                        <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Date</th>
-                        <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Product</th>
-                        <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Qty</th>
-                        <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Price</th>
-                        <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Total</th>
+                      <tr className="bg-gradient-to-r from-teal-600 to-blue-700 text-white">
+                        <th className="px-4 py-3 text-left text-sm sm:text-base font-semibold">Date</th>
+                        <th className="px-4 py-3 text-left text-sm sm:text-base font-semibold">Product</th>
+                        <th className="px-4 py-3 text-left text-sm sm:text-base font-semibold">Qty</th>
+                        <th className="px-4 py-3 text-left text-sm sm:text-base font-semibold">Price</th>
+                        <th className="px-4 py-3 text-left text-sm sm:text-base font-semibold">Total</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {salesHistory.map((sale) => (
-                        <tr key={sale.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-gray-900">
+                        <tr key={sale.id} className="hover:bg-gray-50 transition-all duration-300 hover:shadow-md">
+                          <td className="px-4 py-3 text-sm sm:text-base font-medium text-gray-900">
                             {new Date(sale.purchase_date).toLocaleDateString('en-IN')}
                           </td>
-                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600">{sale.products?.name}</td>
-                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600">{sale.quantity}</td>
-                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600">₹{sale.products?.price.toFixed(2)}</td>
+                          <td className="px-4 py-3 text-sm sm:text-base text-gray-600">{sale.products?.name}</td>
+                          <td className="px-4 py-3 text-sm sm:text-base text-gray-600">{sale.quantity}</td>
+                          <td className="px-4 py-3 text-sm sm:text-base text-gray-600">₹{sale.products?.price.toFixed(2)}</td>
                           <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-semibold text-teal-600">₹{sale.total_price.toFixed(2)}</td>
                         </tr>
                       ))}
@@ -881,4 +881,3 @@ export default function SalesPage() {
     </div>
   );
 }
-

@@ -22,7 +22,7 @@ interface Product {
     invoice_number: string;
     companies?: {
       name: string;
-    };
+    }[];
   };
 }
 
@@ -30,9 +30,7 @@ interface Invoice {
   id: string;
   invoice_number: string;
   company_id: string;
-  companies: {
-    name: string;
-  } | null;
+  companies: { name: string }[] | null;
 }
 
 interface Company {
@@ -126,26 +124,39 @@ export default function Products() {
     }
   }, [filterCategory, filterCompany]);
 
-  const fetchInvoices = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .from('invoices')
-        .select('id, invoice_number, company_id, companies!inner(name)')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
+const fetchInvoices = useCallback(async () => {
+  try {
+    // First fetch invoices
+    const { data: invoicesData, error: invoicesError } = await supabase
+      .from('invoices')
+      .select('id, invoice_number, company_id')
+      .order('created_at', { ascending: false });
+    
+    if (invoicesError) throw invoicesError;
 
-      // Transform data to match Invoice interface
-      const transformedData = (data || []).map((item) => ({
-        id: item.id,
-        invoice_number: item.invoice_number,
-        company_id: item.company_id,
-        companies: item.companies && item.companies.length > 0 ? { name: item.companies[0].name } : null,
-      }));
-      setInvoices(transformedData);
-    } catch (error) {
-      toast.error(`Error fetching invoices: ${(error as Error).message}`);
-    }
-  }, []);
+    // Then fetch all companies
+    const { data: companiesData, error: companiesError } = await supabase
+      .from('companies')
+      .select('id, name');
+    
+    if (companiesError) throw companiesError;
+
+    // Join them manually
+    const transformedData = (invoicesData || []).map((invoice) => {
+      const company = companiesData?.find(comp => comp.id === invoice.company_id);
+      return {
+        id: invoice.id,
+        invoice_number: invoice.invoice_number,
+        company_id: invoice.company_id,
+        companies: company ? [{ name: company.name }] : null, // Keep as array of objects
+      };
+    });
+    
+    setInvoices(transformedData);
+  } catch (error) {
+    toast.error(`Error fetching invoices: ${(error as Error).message}`);
+  }
+}, []);
 
   const fetchCompanies = useCallback(async () => {
     try {
@@ -280,7 +291,7 @@ export default function Products() {
   const filteredProducts = products.filter((product) =>
     product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     product.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (product.invoices?.companies?.name || '').toLowerCase().includes(searchTerm.toLowerCase())
+    (product.invoices?.companies?.[0]?.name || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -342,14 +353,14 @@ export default function Products() {
                     <option value="">Search and select an invoice...</option>
                     {invoices.map((inv) => (
                       <option key={inv.id} value={inv.id}>
-                        {inv.invoice_number} - {inv.companies?.name || 'Unknown'}
+                        {inv.invoice_number} - {inv.companies && inv.companies.length > 0 ? inv.companies[0].name : 'Unknown'}
                       </option>
                     ))}
                   </select>
                   {selectedInvoice && (
                     <div className="mt-1 sm:mt-2 p-1 sm:p-2 bg-blue-50 rounded-lg">
                       <p className="text-xs sm:text-sm text-blue-700">
-                        Selected: {selectedInvoice.invoice_number} from {selectedInvoice.companies?.name}
+                        Selected: {selectedInvoice.invoice_number} from {selectedInvoice.companies && selectedInvoice.companies.length > 0 ? selectedInvoice.companies[0].name : 'Unknown'}
                       </p>
                     </div>
                   )}
@@ -467,12 +478,12 @@ export default function Products() {
                   <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">
                     Expiry Date
                   </label>
-                  <input
-                    type="date"
-                    value={formData.expiry_date}
-                    onChange={(e) => setFormData({ ...formData, expiry_date: e.target.value })}
-                    className="w-full px-2 sm:px-3 py-1 sm:py-2 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent text-xs sm:text-sm"
-                  />
+                    <input
+                      type="date"
+                      value={formData.expiry_date}
+                      onChange={(e) => setFormData({ ...formData, expiry_date: e.target.value })}
+                      className="w-full px-2 sm:px-3 py-1 sm:py-2 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent text-xs sm:text-sm"
+                    />
                 </div>
                 <div className="sm:col-span-2 lg:col-span-3">
                   <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">
@@ -597,7 +608,7 @@ export default function Products() {
                         <span className="font-semibold">Stock:</span> {product.stock} {product.quantity_unit || ''}
                       </p>
                       {product.expiry_date && <p><span className="font-semibold">Expiry:</span> {new Date(product.expiry_date).toLocaleDateString('en-IN')}</p>}
-                      {product.invoices?.companies?.name && <p className="truncate"><span className="font-semibold">Supplier:</span> {product.invoices.companies.name}</p>}
+                      {product.invoices?.companies?.[0]?.name && <p className="truncate"><span className="font-semibold">Supplier:</span> {product.invoices.companies[0].name}</p>}
                     </div>
                     <button
                       onClick={() => handleEdit(product)}
@@ -639,14 +650,14 @@ export default function Products() {
                       <option value="">Search and select an invoice...</option>
                       {invoices.map((inv) => (
                         <option key={inv.id} value={inv.id}>
-                          {inv.invoice_number} - {inv.companies?.name || 'Unknown'}
+                          {inv.invoice_number} - {inv.companies && inv.companies.length > 0 ? inv.companies[0].name : 'Unknown'}
                         </option>
                       ))}
                     </select>
                     {selectedInvoice && (
                       <div className="mt-1 sm:mt-2 p-1 sm:p-2 bg-blue-50 rounded-lg">
                         <p className="text-xs sm:text-sm text-blue-700">
-                          Selected: {selectedInvoice.invoice_number} from {selectedInvoice.companies?.name}
+                          Selected: {selectedInvoice.invoice_number} from {selectedInvoice.companies && selectedInvoice.companies.length > 0 ? selectedInvoice.companies[0].name : 'Unknown'}
                         </p>
                       </div>
                     )}
