@@ -102,21 +102,29 @@ export default function Products() {
       const { data, error } = await query;
       if (error) throw error;
 
-      const productMap = new Map();
-      (data || []).forEach((product: Product) => {
-        if (productMap.has(product.name)) {
-          const existing = productMap.get(product.name);
-          productMap.set(product.name, {
-            ...existing,
-            stock: existing.stock + product.quantity,
-            price: Math.min(existing.price, product.price),
-          });
-        } else {
-          productMap.set(product.name, { ...product, stock: product.quantity });
-        }
-      });
+      // Calculate actual stock by considering sales for each product ID
+      const productsWithActualStock = await Promise.all(
+        (data || []).map(async (product: Product) => {
+          const { data: salesData, error: salesError } = await supabase
+            .from('sales')
+            .select('quantity')
+            .eq('product_id', product.id);
 
-      setProducts(Array.from(productMap.values()));
+          if (salesError) throw salesError;
+
+          const totalSold = salesData?.reduce((sum, sale) => sum + sale.quantity, 0) || 0;
+          const actualStock = product.quantity - totalSold;
+
+          return {
+            ...product,
+            stock: actualStock >= 0 ? actualStock : 0, // Ensure stock doesn't go negative
+            originalQuantity: product.quantity // Keep original quantity for reference
+          };
+        })
+      );
+
+      // Use product ID as the unique key instead of name to avoid aggregation issues
+      setProducts(productsWithActualStock);
     } catch (error) {
       toast.error(`Error fetching products: ${(error as Error).message}`);
     } finally {
@@ -124,39 +132,36 @@ export default function Products() {
     }
   }, [filterCategory, filterCompany]);
 
-const fetchInvoices = useCallback(async () => {
-  try {
-    // First fetch invoices
-    const { data: invoicesData, error: invoicesError } = await supabase
-      .from('invoices')
-      .select('id, invoice_number, company_id')
-      .order('created_at', { ascending: false });
-    
-    if (invoicesError) throw invoicesError;
+  const fetchInvoices = useCallback(async () => {
+    try {
+      const { data: invoicesData, error: invoicesError } = await supabase
+        .from('invoices')
+        .select('id, invoice_number, company_id')
+        .order('created_at', { ascending: false });
+      
+      if (invoicesError) throw invoicesError;
 
-    // Then fetch all companies
-    const { data: companiesData, error: companiesError } = await supabase
-      .from('companies')
-      .select('id, name');
-    
-    if (companiesError) throw companiesError;
+      const { data: companiesData, error: companiesError } = await supabase
+        .from('companies')
+        .select('id, name');
+      
+      if (companiesError) throw companiesError;
 
-    // Join them manually
-    const transformedData = (invoicesData || []).map((invoice) => {
-      const company = companiesData?.find(comp => comp.id === invoice.company_id);
-      return {
-        id: invoice.id,
-        invoice_number: invoice.invoice_number,
-        company_id: invoice.company_id,
-        companies: company ? [{ name: company.name }] : null, // Keep as array of objects
-      };
-    });
-    
-    setInvoices(transformedData);
-  } catch (error) {
-    toast.error(`Error fetching invoices: ${(error as Error).message}`);
-  }
-}, []);
+      const transformedData = (invoicesData || []).map((invoice) => {
+        const company = companiesData?.find(comp => comp.id === invoice.company_id);
+        return {
+          id: invoice.id,
+          invoice_number: invoice.invoice_number,
+          company_id: invoice.company_id,
+          companies: company ? [{ name: company.name }] : null,
+        };
+      });
+      
+      setInvoices(transformedData);
+    } catch (error) {
+      toast.error(`Error fetching invoices: ${(error as Error).message}`);
+    }
+  }, []);
 
   const fetchCompanies = useCallback(async () => {
     try {
@@ -200,12 +205,21 @@ const fetchInvoices = useCallback(async () => {
       setIsSubmitting(true);
 
       let imageUrl = editingProduct?.image_url || '';
+      
+      // Upload image if a new one is selected
       if (formData.image) {
-        const { data: uploadData, error: uploadError } = await supabase.storage
+        const fileName = `${Date.now()}-${formData.image.name}`;
+        const { error: uploadError } = await supabase.storage
           .from('product-images')
-          .upload(`${Date.now()}-${formData.image.name}`, formData.image, { upsert: true });
+          .upload(fileName, formData.image);
+        
         if (uploadError) throw uploadError;
-        imageUrl = supabase.storage.from('product-images').getPublicUrl(uploadData.path).data.publicUrl;
+        
+        const { data: { publicUrl } } = supabase.storage
+          .from('product-images')
+          .getPublicUrl(fileName);
+        
+        imageUrl = publicUrl;
       }
 
       if (isEditMode && editingProduct) {
@@ -588,7 +602,7 @@ const fetchInvoices = useCallback(async () => {
                         alt={product.name}
                         width={300}
                         height={200}
-                        className="w-full h-24 sm:h-32 lg:h-40 object-cover mb-1 sm:mb-2 rounded-lg"
+                        className="w-full h-110 sm:h-32 lg:h-40 object-cover mb-1 sm:mb-2 rounded-lg"
                       />
                     ) : (
                       <div className="w-full h-24 sm:h-32 lg:h-40 bg-gray-200 flex items-center justify-center mb-1 sm:mb-2 rounded-lg">
@@ -811,4 +825,3 @@ const fetchInvoices = useCallback(async () => {
     </div>
   );
 }
-

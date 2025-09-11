@@ -18,6 +18,12 @@ interface Sale {
   purchase_date: string;
 }
 
+interface ReturnRecord {
+  total_price: number;
+  return_date: string;
+  company_id: string;
+}
+
 interface TurnoverData {
   date: string;
   purchaseTurnover: number;
@@ -86,6 +92,14 @@ export default function Turnover() {
 
       if (invoicesError) throw invoicesError;
 
+      // Fetch returns data
+      const { data: returnsData, error: returnsError } = await supabase
+        .from('returns')
+        .select('total_price, return_date, company_id')
+        .order('return_date', { ascending: true });
+
+      if (returnsError) throw returnsError;
+
       // Fetch sales data
       const { data: salesData, error: salesError } = await supabase
         .from('sales')
@@ -102,22 +116,30 @@ export default function Turnover() {
         company_id: inv.company_id,
         companies: Array.isArray(inv.companies) ? inv.companies[0] || null : inv.companies,
       }));
+      const returns = (returnsData || []) as ReturnRecord[];
       const sales = (salesData || []) as Sale[];
 
-
       // Calculate totals
-      const totalPurchases = purchases.reduce((sum, invoice) => sum + invoice.total_amount, 0);
+      const grossPurchases = purchases.reduce((sum, invoice) => sum + invoice.total_amount, 0);
+      const totalReturns = returns.reduce((sum, ret) => sum + ret.total_price, 0);
+      const totalPurchasesNet = grossPurchases - totalReturns;
       const totalSales = sales.reduce((sum, sale) => sum + sale.total_price, 0);
       const invoiceCount = purchases.length;
 
       // Daily turnover aggregation
-      const dailyPurchases = purchases.reduce<Record<string, { total: number; count: number }>>((acc, invoice) => {
+      const grossDailyPurchases = purchases.reduce<Record<string, { total: number; count: number }>>((acc, invoice) => {
         const date = invoice.date;
         if (!acc[date]) {
           acc[date] = { total: 0, count: 0 };
         }
         acc[date].total += invoice.total_amount;
         acc[date].count += 1;
+        return acc;
+      }, {});
+
+      const dailyReturns = returns.reduce<Record<string, number>>((acc, ret) => {
+        const date = ret.return_date;
+        acc[date] = (acc[date] || 0) + ret.total_price;
         return acc;
       }, {});
 
@@ -129,24 +151,25 @@ export default function Turnover() {
 
       // Get all unique dates
       const allDates = Array.from(new Set([
-        ...Object.keys(dailyPurchases),
+        ...Object.keys(grossDailyPurchases),
+        ...Object.keys(dailyReturns),
         ...Object.keys(dailySales)
       ])).sort();
 
       const dailyTurnoverData = allDates.map(date => {
-        const purchaseTurnover = dailyPurchases[date]?.total || 0;
+        const purchaseTurnover = (grossDailyPurchases[date]?.total || 0) - (dailyReturns[date] || 0);
         const salesTurnover = dailySales[date] || 0;
         return {
           date,
           purchaseTurnover,
           salesTurnover,
           netTurnover: salesTurnover - purchaseTurnover,
-          invoiceCount: dailyPurchases[date]?.count || 0
+          invoiceCount: grossDailyPurchases[date]?.count || 0
         };
       });
 
       // Monthly turnover aggregation
-      const monthlyPurchases = purchases.reduce<Record<string, { total: number; count: number }>>((acc, invoice) => {
+      const grossMonthlyPurchases = purchases.reduce<Record<string, { total: number; count: number }>>((acc, invoice) => {
         const date = new Date(invoice.date);
         const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
         if (!acc[monthKey]) {
@@ -154,6 +177,13 @@ export default function Turnover() {
         }
         acc[monthKey].total += invoice.total_amount;
         acc[monthKey].count += 1;
+        return acc;
+      }, {});
+
+      const monthlyReturns = returns.reduce<Record<string, number>>((acc, ret) => {
+        const date = new Date(ret.return_date);
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        acc[monthKey] = (acc[monthKey] || 0) + ret.total_price;
         return acc;
       }, {});
 
@@ -165,51 +195,59 @@ export default function Turnover() {
       }, {});
 
       const allMonths = Array.from(new Set([
-        ...Object.keys(monthlyPurchases),
+        ...Object.keys(grossMonthlyPurchases),
+        ...Object.keys(monthlyReturns),
         ...Object.keys(monthlySales)
       ])).sort();
 
       const monthlyTurnoverData = allMonths.map(monthKey => {
-        const purchaseTurnover = monthlyPurchases[monthKey]?.total || 0;
+        const purchaseTurnover = (grossMonthlyPurchases[monthKey]?.total || 0) - (monthlyReturns[monthKey] || 0);
         const salesTurnover = monthlySales[monthKey] || 0;
         return {
           month: new Date(monthKey + '-01').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }),
           purchaseTurnover,
           salesTurnover,
           netTurnover: salesTurnover - purchaseTurnover,
-          invoiceCount: monthlyPurchases[monthKey]?.count || 0
+          invoiceCount: grossMonthlyPurchases[monthKey]?.count || 0
         };
       });
 
-      // Company-wise turnover analysis
-      const companyAnalysis = purchases.reduce<Record<string, { name: string; total: number; count: number }>>((acc, invoice) => {
+      // Company-wise turnover analysis (net)
+      const companyAnalysis = purchases.reduce<Record<string, { name: string; grossTotal: number; count: number }>>((acc, invoice) => {
         const companyId = invoice.company_id;
         const companyName = invoice.companies?.name || 'Unknown Company';
 
         if (!acc[companyId]) {
-          acc[companyId] = { name: companyName, total: 0, count: 0 };
+          acc[companyId] = { name: companyName, grossTotal: 0, count: 0 };
         }
-        acc[companyId].total += invoice.total_amount;
+        acc[companyId].grossTotal += invoice.total_amount;
         acc[companyId].count += 1;
         return acc;
       }, {});
 
+      returns.forEach((ret) => {
+        const companyId = ret.company_id;
+        if (companyAnalysis[companyId]) {
+          companyAnalysis[companyId].grossTotal -= ret.total_price;
+        }
+      });
+
       const companyTurnoverData = Object.values(companyAnalysis)
         .map(company => ({
           name: company.name,
-          purchaseTurnover: company.total,
+          purchaseTurnover: company.grossTotal,
           invoiceCount: company.count,
-          avgInvoiceValue: company.count > 0 ? company.total / company.count : 0,
-          marketShare: totalPurchases > 0 ? (company.total / totalPurchases) * 100 : 0
+          avgInvoiceValue: company.count > 0 ? company.grossTotal / company.count : 0,
+          marketShare: totalPurchasesNet > 0 ? (company.grossTotal / totalPurchasesNet) * 100 : 0
         }))
         .sort((a, b) => b.purchaseTurnover - a.purchaseTurnover);
 
-      // Calculate average daily turnover
+      // Calculate average daily turnover (net)
       const avgDaily = dailyTurnoverData.length > 0
         ? dailyTurnoverData.reduce((sum, day) => sum + day.purchaseTurnover + day.salesTurnover, 0) / dailyTurnoverData.length
         : 0;
 
-      setTotalPurchaseTurnover(totalPurchases);
+      setTotalPurchaseTurnover(totalPurchasesNet);
       setTotalSalesTurnover(totalSales);
       setTotalInvoices(invoiceCount);
       setDailyTurnover(dailyTurnoverData);
@@ -523,6 +561,3 @@ export default function Turnover() {
     </div>
   );
 }
-
-
-

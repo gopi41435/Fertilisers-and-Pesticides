@@ -1,19 +1,38 @@
 'use client';
-import { useState, useEffect } from 'react';
+
+import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import toast from 'react-hot-toast';
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell
+} from 'recharts';
 
 interface InvoiceRecord {
   date: string;
   total_amount: number;
-  company_id: string;
-  companies: { name: string }[] | null; // Updated to handle array or null
+  company_id: string | null; // Allow null for company_id
+  companies: { name: string }[] | null;
 }
 
 interface SaleRecord {
   purchase_date: string;
   total_price: number;
+}
+
+interface ReturnRecord {
+  return_date: string;
+  total_price: number;
+  company_id: string | null;
 }
 
 interface CombinedData {
@@ -23,10 +42,16 @@ interface CombinedData {
 }
 
 interface CompanyData {
+  id: string; // Unique identifier using company_id
   name: string;
   purchases: number;
   sales: number;
   total: number;
+}
+
+interface Company {
+  id: string;
+  name: string;
 }
 
 interface TooltipProps {
@@ -67,7 +92,7 @@ export default function Overview() {
     try {
       setIsLoading(true);
 
-      // Fetch invoices (purchases)
+      // Fetch invoices (purchases) with company details
       const { data: invoicesData, error: invoicesError } = await supabase
         .from('invoices')
         .select(`
@@ -82,6 +107,22 @@ export default function Overview() {
 
       if (invoicesError) throw invoicesError;
 
+      // Fetch all companies to handle missing relations
+      const { data: companiesData, error: companiesError } = await supabase
+        .from('companies')
+        .select('id, name');
+      if (companiesError) throw companiesError;
+
+      const companiesMap = new Map(companiesData.map((c: Company) => [c.id, c.name]));
+
+      // Fetch returns (purchase returns)
+      const { data: returnsData, error: returnsError } = await supabase
+        .from('returns')
+        .select('total_price, return_date, company_id')
+        .order('return_date', { ascending: true });
+
+      if (returnsError) throw returnsError;
+
       // Fetch sales
       const { data: salesData, error: salesError } = await supabase
         .from('sales')
@@ -94,21 +135,32 @@ export default function Overview() {
         date: inv.date,
         total_amount: inv.total_amount,
         company_id: inv.company_id,
-        companies: inv.companies || null, // Ensure companies is an array or null
+        companies: inv.companies || null,
       })) as InvoiceRecord[];
+
+      const returns = (returnsData || []) as ReturnRecord[];
 
       const sales = (salesData || []) as SaleRecord[];
 
       // Calculate totals
-      const totalPurchaseAmount = purchases.reduce((sum, invoice) => sum + invoice.total_amount, 0);
+      const grossPurchaseAmount = purchases.reduce((sum, invoice) => sum + invoice.total_amount, 0);
+      const totalReturns = returns.reduce((sum, ret) => sum + ret.total_price, 0);
+      const totalPurchaseAmount = grossPurchaseAmount - totalReturns;
       const totalSaleAmount = sales.reduce((sum, sale) => sum + sale.total_price, 0);
       const invoiceCount = purchases.length;
       const avgValue = invoiceCount > 0 ? totalPurchaseAmount / invoiceCount : 0;
 
-      // Aggregate purchases by date
-      const purchasesByDate = purchases.reduce<Record<string, number>>((acc, invoice) => {
+      // Aggregate purchases by date (gross)
+      const grossPurchasesByDate = purchases.reduce<Record<string, number>>((acc, invoice) => {
         const date = invoice.date;
         acc[date] = (acc[date] || 0) + invoice.total_amount;
+        return acc;
+      }, {});
+
+      // Aggregate returns by date
+      const returnsByDate = returns.reduce<Record<string, number>>((acc, ret) => {
+        const date = ret.return_date;
+        acc[date] = (acc[date] || 0) + ret.total_price;
         return acc;
       }, {});
 
@@ -121,39 +173,52 @@ export default function Overview() {
 
       // Get all unique dates and create combined data
       const allDates = Array.from(new Set([
-        ...Object.keys(purchasesByDate),
+        ...Object.keys(grossPurchasesByDate),
+        ...Object.keys(returnsByDate),
         ...Object.keys(salesByDate)
       ])).sort();
 
       const chartData = allDates.map(date => ({
         date,
-        purchases: purchasesByDate[date] || 0,
+        purchases: (grossPurchasesByDate[date] || 0) - (returnsByDate[date] || 0),
         sales: salesByDate[date] || 0
       }));
 
-      // Aggregate by company (purchases only since sales don't have company info)
-      const aggregatedByCompany = purchases.reduce<Record<string, { name: string; purchases: number }>>((acc, invoice) => {
-        const companyId = invoice.company_id;
+      // Aggregate by company (gross purchases)
+      const aggregatedByCompany = purchases.reduce<Record<string, { name: string; grossPurchases: number }>>((acc, invoice) => {
+        const companyId = invoice.company_id || 'unknown'; // Handle null company_id
         const companyName = invoice.companies && invoice.companies.length > 0
-          ? invoice.companies[0].name // Safely access the first company's name
-          : 'Unknown Company';
+          ? invoice.companies[0].name
+          : companiesMap.get(companyId) || `Unknown Company (${companyId})`; // Fallback to companies table
 
         if (!acc[companyId]) {
-          acc[companyId] = { name: companyName, purchases: 0 };
+          acc[companyId] = { name: companyName, grossPurchases: 0 };
         }
-        acc[companyId].purchases += invoice.total_amount;
+        acc[companyId].grossPurchases += invoice.total_amount;
         return acc;
       }, {});
 
-      const companyChartData = Object.values(aggregatedByCompany)
-        .map(company => ({
-          ...company,
-          sales: 0, // Sales data doesn't have company breakdown in current schema
-          total: company.purchases
-        }))
-        .sort((a, b) => b.total - a.total);
+      // Subtract returns per company
+      returns.forEach((ret) => {
+        const companyId = ret.company_id || 'unknown';
+        if (aggregatedByCompany[companyId]) {
+          aggregatedByCompany[companyId].grossPurchases -= ret.total_price;
+        }
+      });
 
-      // Calculate growth percentages
+      // Map to CompanyData with correct id and name
+      const companyChartData = Object.entries(aggregatedByCompany).map(([companyId, company]) => ({
+        id: companyId,
+        name: company.name,
+        purchases: company.grossPurchases,
+        sales: 0,
+        total: company.grossPurchases
+      })).sort((a, b) => b.total - a.total);
+
+      // Log data for debugging
+      console.log('Company Data:', companyChartData);
+
+      // Calculate growth percentages (using net purchases)
       let pGrowth = null;
       let sGrowth = null;
 
@@ -179,7 +244,8 @@ export default function Overview() {
       setAvgInvoiceValue(avgValue);
       setPurchaseGrowth(pGrowth);
       setSalesGrowth(sGrowth);
-    } catch {
+    } catch (error) {
+      console.error('Error fetching overview data:', error);
       toast.error('Error fetching overview data');
     } finally {
       setIsLoading(false);
@@ -356,7 +422,7 @@ export default function Overview() {
                     dataKey="purchases"
                   >
                     {companyData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      <Cell key={`cell-${entry.id}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
                   <Tooltip content={<PieTooltip />} />
@@ -373,7 +439,7 @@ export default function Overview() {
               <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
                 <span className="text-gray-700 font-medium">Gross Profit Margin</span>
                 <span className="text-lg font-bold text-green-600">
-                  {totalPurchases > 0 ? `${(((totalSales - totalPurchases) / totalSales) * 100).toFixed(1)}%` : 'N/A'}
+                  {totalSales > 0 ? `${(((totalSales - totalPurchases) / totalSales) * 100).toFixed(1)}%` : 'N/A'}
                 </span>
               </div>
 
@@ -415,7 +481,7 @@ export default function Overview() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {companyData.map((company, index) => (
-                    <tr key={company.name} className="hover:bg-gray-50 transition-colors">
+                    <tr key={company.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4 font-medium text-gray-900">#{index + 1}</td>
                       <td className="px-6 py-4 text-gray-900 font-medium">{company.name}</td>
                       <td className="px-6 py-4 text-right font-semibold text-teal-600">
@@ -435,4 +501,5 @@ export default function Overview() {
     </div>
   );
 }
+
 

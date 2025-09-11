@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import autoTable, { UserOptions } from 'jspdf-autotable';
 import Select, { SingleValue } from 'react-select';
 import toast from 'react-hot-toast';
 
@@ -57,6 +57,7 @@ interface JSPDFWithAutoTable extends jsPDF {
   lastAutoTable: {
     finalY: number;
   };
+  autoTable: (options: UserOptions) => jsPDF;
 }
 
 interface SelectOption {
@@ -84,6 +85,9 @@ export default function SalesPage() {
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
+
+  // Edit state
+  const [editingSale, setEditingSale] = useState<SaleRecord | null>(null);
 
   const fetchCustomers = useCallback(async () => {
     try {
@@ -266,6 +270,99 @@ export default function SalesPage() {
       setSelectedSaleCustomer('');
     } catch (error: unknown) {
       toast.error(`Error recording sale: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Function to delete a sale and restore product quantity
+  const deleteSale = async (saleId: string, productId: string, quantity: number) => {
+    try {
+      setIsLoading(true);
+      
+      // First, restore the product quantity
+      const product = products.find((p) => p.id === productId);
+      if (product) {
+        const { error: updateError } = await supabase
+          .from('products')
+          .update({ quantity: product.quantity + quantity })
+          .eq('id', productId);
+        
+        if (updateError) throw updateError;
+      }
+      
+      // Then delete the sale record
+      const { error: deleteError } = await supabase
+        .from('sales')
+        .delete()
+        .eq('id', saleId);
+      
+      if (deleteError) throw deleteError;
+      
+      // Refresh data
+      await fetchProducts();
+      if (selectedReportCustomer) {
+        await fetchSalesHistory(selectedReportCustomer);
+      }
+      
+      toast.success('Sale deleted successfully! Product quantity restored.');
+    } catch (error: unknown) {
+      toast.error(`Error deleting sale: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Function to edit a sale
+  const editSale = async (saleId: string, newQuantity: number) => {
+    try {
+      setIsLoading(true);
+      
+      const sale = salesHistory.find((s) => s.id === saleId);
+      if (!sale) throw new Error('Sale not found');
+      
+      const product = products.find((p) => p.id === sale.product_id);
+      if (!product) throw new Error('Product not found');
+      
+      // Calculate the difference in quantity
+      const quantityDifference = newQuantity - sale.quantity;
+      
+      // Check if there's enough stock for the increase
+      if (quantityDifference > 0 && quantityDifference > product.quantity) {
+        toast.error(`Not enough stock for ${product.name}. Available: ${product.quantity}`);
+        return;
+      }
+      
+      // Update product quantity
+      const { error: updateProductError } = await supabase
+        .from('products')
+        .update({ quantity: product.quantity - quantityDifference })
+        .eq('id', product.id);
+      
+      if (updateProductError) throw updateProductError;
+      
+      // Update sale record
+      const newTotalPrice = product.price * newQuantity - (sale.discount_price || 0);
+      const { error: updateSaleError } = await supabase
+        .from('sales')
+        .update({ 
+          quantity: newQuantity,
+          total_price: newTotalPrice
+        })
+        .eq('id', saleId);
+      
+      if (updateSaleError) throw updateSaleError;
+      
+      // Refresh data
+      await fetchProducts();
+      if (selectedReportCustomer) {
+        await fetchSalesHistory(selectedReportCustomer);
+      }
+      
+      setEditingSale(null);
+      toast.success('Sale updated successfully!');
+    } catch (error: unknown) {
+      toast.error(`Error editing sale: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
@@ -856,6 +953,7 @@ export default function SalesPage() {
                         <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Qty</th>
                         <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Price</th>
                         <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Total</th>
+                        <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -865,9 +963,37 @@ export default function SalesPage() {
                             {new Date(sale.purchase_date).toLocaleDateString('en-IN')}
                           </td>
                           <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600">{sale.products?.name}</td>
-                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600">{sale.quantity}</td>
+                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600">
+                            {editingSale?.id === sale.id ? (
+                              <input
+                                type="number"
+                                min="1"
+                                defaultValue={sale.quantity}
+                                onBlur={(e) => editSale(sale.id, parseInt(e.target.value))}
+                                className="w-16 px-1 py-0.5 border border-gray-300 rounded text-xs"
+                              />
+                            ) : (
+                              sale.quantity
+                            )}
+                          </td>
                           <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600">₹{sale.products?.price.toFixed(2)}</td>
                           <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-semibold text-teal-600">₹{sale.total_price.toFixed(2)}</td>
+                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">
+                            <div className="flex space-x-2">
+                              <button
+                                onClick={() => setEditingSale(editingSale?.id === sale.id ? null : sale)}
+                                className="text-blue-500 hover:text-blue-700"
+                              >
+                                {editingSale?.id === sale.id ? 'Cancel' : 'Edit'}
+                              </button>
+                              <button
+                                onClick={() => deleteSale(sale.id, sale.product_id, sale.quantity)}
+                                className="text-red-500 hover:text-red-700"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

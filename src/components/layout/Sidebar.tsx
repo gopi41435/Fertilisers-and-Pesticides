@@ -16,7 +16,8 @@ import {
   Zap,
   Menu,
   X,
-  Calendar
+  Calendar,
+  RotateCcw // Icon for Returns, or choose suitable
 } from 'lucide-react';
 
 export const Sidebar = () => {
@@ -46,6 +47,7 @@ export const Sidebar = () => {
     { href: '/dashboard/invoices', label: 'Invoices', icon: FileText },
     { href: '/dashboard/products', label: 'Products', icon: Package },
     { href: '/dashboard/customers', label: 'Customers', icon: Users },
+    { href: '/dashboard/returns', label: 'Returns', icon: RotateCcw },
     { href: '/dashboard/turnover', label: 'Turnover', icon: DollarSign },
     { href: '/dashboard/overview', label: 'Overview', icon: BarChart3 },
     { href: '/dashboard/schedule', label: 'Schedule', icon: Calendar },

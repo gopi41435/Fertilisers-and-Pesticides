@@ -31,8 +31,8 @@ export const Header = () => {
       ${isMobile
         ? 'left-0 px-3 py-3 h-16'
         : isTablet
-          ? 'left-64 px-4 py-4 h-18'
-          : 'left-64 px-5 py-5 h-20'
+          ? 'left-64 px-4 py-4 h-17'
+          : 'left-64 px-5 py-5 h-17'
       }
     `}>
       {/* Left: Page Title */}

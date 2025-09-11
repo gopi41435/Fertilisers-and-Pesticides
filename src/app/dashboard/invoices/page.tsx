@@ -22,6 +22,13 @@ interface Company {
   name: string;
 }
 
+interface Return {
+  id: string;
+  invoice_id: string;
+  total_price: number;
+  return_date: string;
+}
+
 interface JSPDFWithAutoTable extends jsPDF {
   lastAutoTable: {
     finalY: number;
@@ -152,8 +159,29 @@ export default function Invoices() {
     }
   };
 
-  const generateInvoicePDF = (invoice: Invoice) => {
+  const fetchReturnsForInvoice = async (invoiceId: string): Promise<Return[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('returns')
+        .select('*')
+        .eq('invoice_id', invoiceId);
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Error fetching returns: ${message}`);
+      return [];
+    }
+  };
+
+  const generateInvoicePDF = async (invoice: Invoice) => {
     const doc = new jsPDF() as JSPDFWithAutoTable;
+
+    // Fetch returns for the invoice
+    const returns = await fetchReturnsForInvoice(invoice.id);
+    const totalReturns = returns.reduce((sum, ret) => sum + ret.total_price, 0);
+    const netAmount = invoice.total_amount - totalReturns;
 
     // Title
     doc.setFont("helvetica", "bold");
@@ -172,6 +200,30 @@ export default function Invoices() {
     doc.text(`Date: ${new Date(invoice.date).toLocaleDateString('en-IN')}`, 20, 60);
     doc.text(`Company: ${invoice.companies?.name || 'Unknown'}`, 20, 70);
     doc.text(`Total Amount: ₹${invoice.total_amount.toFixed(2)}`, 20, 80);
+    doc.text(`Total Returns: ₹${totalReturns.toFixed(2)}`, 20, 90);
+    doc.text(`Net Amount: ₹${netAmount.toFixed(2)}`, 20, 100);
+
+    // Returns table if returns exist
+    if (returns.length > 0) {
+      doc.setFont("helvetica", "bold");
+      doc.text("RETURNS", 20, 120);
+
+      autoTable(doc, {
+        startY: 125,
+        head: [['Return ID', 'Date', 'Amount']],
+        body: returns.map(ret => [
+          ret.id,
+          new Date(ret.return_date).toLocaleDateString('en-IN'),
+          `₹${ret.total_price.toFixed(2)}`
+        ]),
+        theme: 'grid',
+        headStyles: {
+          fillColor: [15, 118, 110],
+          textColor: 255,
+          fontStyle: 'bold'
+        },
+      });
+    }
 
     // Footer
     doc.setFontSize(10);
@@ -215,16 +267,28 @@ export default function Invoices() {
       doc.text(`Total Invoices: ${companyInvoices?.length || 0}`, 20, 70);
 
       if (companyInvoices && companyInvoices.length > 0) {
-        // Summary table
-        const totalAmount = companyInvoices.reduce((sum, inv) => sum + inv.total_amount, 0);
+        // Fetch returns for all invoices
+        const invoiceIds = companyInvoices.map(inv => inv.id);
+        const { data: returns, error: returnsError } = await supabase
+          .from('returns')
+          .select('*')
+          .in('invoice_id', invoiceIds);
 
+        if (returnsError) throw returnsError;
+
+        // Calculate totals
+        const totalAmount = companyInvoices.reduce((sum, inv) => sum + inv.total_amount, 0);
+        const totalReturns = returns.reduce((sum, ret) => sum + ret.total_price, 0);
+        const netAmount = totalAmount - totalReturns;
+
+        // Summary table
         doc.setFont("helvetica", "bold");
         doc.text("SUMMARY", 20, 90);
 
         autoTable(doc, {
           startY: 95,
-          head: [['Total Invoices', 'Total Amount']],
-          body: [[companyInvoices.length, `₹${totalAmount.toFixed(2)}`]],
+          head: [['Total Invoices', 'Total Amount', 'Total Returns', 'Net Amount']],
+          body: [[companyInvoices.length, `₹${totalAmount.toFixed(2)}`, `₹${totalReturns.toFixed(2)}`, `₹${netAmount.toFixed(2)}`]],
           theme: 'grid',
           headStyles: {
             fillColor: [15, 118, 110],
@@ -243,12 +307,19 @@ export default function Invoices() {
           doc.text("INVOICE DETAILS", 20, 20);
         }
 
-        const invoiceHeaders = [['Invoice #', 'Date', 'Amount']];
-        const invoiceRows = companyInvoices.map(inv => [
-          inv.invoice_number,
-          new Date(inv.date).toLocaleDateString('en-IN'),
-          `₹${inv.total_amount.toFixed(2)}`
-        ]);
+        const invoiceHeaders = [['Invoice #', 'Date', 'Amount', 'Returns', 'Net Amount']];
+        const invoiceRows = companyInvoices.map(inv => {
+          const invReturns = returns.filter(ret => ret.invoice_id === inv.id);
+          const invReturnTotal = invReturns.reduce((sum, ret) => sum + ret.total_price, 0);
+          const invNetAmount = inv.total_amount - invReturnTotal;
+          return [
+            inv.invoice_number,
+            new Date(inv.date).toLocaleDateString('en-IN'),
+            `₹${inv.total_amount.toFixed(2)}`,
+            `₹${invReturnTotal.toFixed(2)}`,
+            `₹${invNetAmount.toFixed(2)}`
+          ];
+        });
 
         autoTable(doc, {
           startY: doc.lastAutoTable.finalY + 5,
