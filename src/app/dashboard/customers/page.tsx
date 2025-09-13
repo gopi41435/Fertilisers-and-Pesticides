@@ -905,7 +905,7 @@ export default function SalesPage() {
                 <div>
                   <label className="block text-xs sm:text-sm md:text-sm font-semibold text-gray-700 mb-2">Payment Status *</label>
                   <Select
-                    value={{ value: paymentStatus, label: paymentStatus === 'paid' ? 'Paid' : 'Unpaid' }}
+                    value={{ value: paymentStatus, label: paymentStatus === 'unpaid' ? 'Paid' : 'Unpaid' }}
                     onChange={(selected: SingleValue<{ value: 'paid' | 'unpaid'; label: string }>) =>
                       setPaymentStatus(selected ? selected.value : 'paid')
                     }
