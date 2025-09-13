@@ -70,7 +70,7 @@ export default function LoginPage() {
           </div>
         </div>
         
-        <h1 className="text-2xl font-bold mb-2 text-center text-gray-800">CEO Login</h1>
+        <h1 className="text-2xl font-bold mb-2 text-center text-gray-800">Login</h1>
         <p className="text-sm text-gray-600 text-center mb-6">Lakshmi Priya Fertilisers</p>
         
         <form onSubmit={handleLogin} className="space-y-4">
