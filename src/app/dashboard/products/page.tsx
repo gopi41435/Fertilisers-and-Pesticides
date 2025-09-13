@@ -618,8 +618,8 @@ export default function Products() {
                       {product.discount_price && <p><span className="font-semibold">Discount:</span> ₹{product.discount_price.toFixed(2)}</p>}
                       {product.offer_scheme && <p className="truncate"><span className="font-semibold">Scheme:</span> {product.offer_scheme}</p>}
                       <p><span className="font-semibold">Unit:</span> {product.quantity_unit || 'N/A'}</p>
-                      <p className={product.stock === 0 ? 'text-red-600 font-bold' : product.stock < 10 ? 'text-orange-600 font-bold' : 'text-green-600 font-bold'}>
-                        <span className="font-semibold">Stock:</span> {product.stock} {product.quantity_unit || ''}
+                      <p className={product.quantity === 0 ? 'text-red-600 font-bold' : product.quantity < 10 ? 'text-orange-600 font-bold' : 'text-green-600 font-bold'}>
+                        <span className="font-semibold">Stock:</span> {product.quantity}  
                       </p>
                       {product.expiry_date && <p><span className="font-semibold">Expiry:</span> {new Date(product.expiry_date).toLocaleDateString('en-IN')}</p>}
                       {product.invoices?.companies?.[0]?.name && <p className="truncate"><span className="font-semibold">Supplier:</span> {product.invoices.companies[0].name}</p>}

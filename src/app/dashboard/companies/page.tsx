@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 interface Company {
   id: string;
   name: string;
-  type?: string;
+  type?: string | null; // Updated to allow null
   created_at: string;
 }
 
@@ -15,6 +15,7 @@ export default function Companies() {
   const [formData, setFormData] = useState({ name: '', type: '' });
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editingCompany, setEditingCompany] = useState<Company | null>(null);
 
   useEffect(() => {
     fetchCompanies();
@@ -48,24 +49,47 @@ export default function Companies() {
 
     try {
       setIsSubmitting(true);
-      const { error } = await supabase
-        .from('companies')
-        .insert([{
-          name: formData.name.trim(),
-          type: formData.type.trim() || null
-        }]);
+      if (editingCompany) {
+        // Update existing company
+        const { error } = await supabase
+          .from('companies')
+          .update({
+            name: formData.name.trim(),
+            type: formData.type.trim() || null,
+          })
+          .eq('id', editingCompany.id);
 
-      if (error) throw error;
+        if (error) throw error;
 
-      toast.success('Company added successfully');
+        toast.success('Company updated successfully');
+        setCompanies(companies.map(c => c.id === editingCompany.id ? { ...c, name: formData.name.trim(), type: formData.type.trim() || null } : c));
+      } else {
+        // Add new company
+        const { error } = await supabase
+          .from('companies')
+          .insert([{
+            name: formData.name.trim(),
+            type: formData.type.trim() || null
+          }]);
+
+        if (error) throw error;
+
+        toast.success('Company added successfully');
+      }
       setFormData({ name: '', type: '' });
+      setEditingCompany(null);
       fetchCompanies();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      toast.error(`Error adding company: ${message}`);
+      toast.error(`Error ${editingCompany ? 'updating' : 'adding'} company: ${message}`);
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleEdit = (company: Company) => {
+    setEditingCompany(company);
+    setFormData({ name: company.name, type: company.type || '' });
   };
 
   return (
@@ -78,9 +102,11 @@ export default function Companies() {
           </h1>
         </div>
 
-        {/* Add Company Form */}
+        {/* Add/Edit Company Form */}
         <div className="bg-gradient-to-r from-teal-50 to-blue-50 p-4 sm:p-6 rounded-xl sm:rounded-2xl mb-4 sm:mb-6 md:mb-8">
-          <h2 className="text-xl sm:text-2xl md:text-2xl font-bold text-gray-800 mb-4 sm:mb-6">Add New Company</h2>
+          <h2 className="text-xl sm:text-2xl md:text-2xl font-bold text-gray-800 mb-4 sm:mb-6">
+            {editingCompany ? 'Edit Company' : 'Add New Company'}
+          </h2>
 
           <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:gap-6">
             <div>
@@ -112,8 +138,17 @@ export default function Companies() {
                 disabled={isSubmitting}
                 className="w-full bg-gradient-to-r from-teal-600 to-blue-600 hover:from-teal-700 hover:to-blue-700 text-white font-semibold py-2 sm:py-3 px-4 sm:px-6 rounded-lg sm:rounded-xl transition-all duration-200 hover:scale-105 shadow-md disabled:opacity-50 text-xs sm:text-sm"
               >
-                {isSubmitting ? "Adding..." : "➕ Add Company"}
+                {isSubmitting ? (editingCompany ? 'Updating...' : 'Adding...') : (editingCompany ? '💾 Update Company' : '➕ Add Company')}
               </button>
+              {editingCompany && (
+                <button
+                  type="button"
+                  onClick={() => { setEditingCompany(null); setFormData({ name: '', type: '' }); }}
+                  className="w-full mt-2 sm:mt-3 bg-gray-500 hover:bg-gray-600 text-white font-semibold py-2 sm:py-3 px-4 sm:px-6 rounded-lg sm:rounded-xl transition-all duration-200 hover:scale-105 shadow-md text-xs sm:text-sm"
+                >
+                  Cancel
+                </button>
+              )}
             </div>
           </form>
         </div>
@@ -158,6 +193,7 @@ export default function Companies() {
                     <th className="px-3 sm:px-4 py-2 sm:py-3 text-left font-semibold text-xs sm:text-sm">Company Name</th>
                     <th className="px-3 sm:px-4 py-2 sm:py-3 text-left font-semibold text-xs sm:text-sm">Type</th>
                     <th className="px-3 sm:px-4 py-2 sm:py-3 text-left font-semibold text-xs sm:text-sm">Added Date</th>
+                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-left font-semibold text-xs sm:text-sm">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -191,6 +227,14 @@ export default function Companies() {
                       </td>
                       <td className="px-3 sm:px-4 py-2 sm:py-3 text-gray-600 text-xs sm:text-sm">
                         {new Date(company.created_at).toLocaleDateString()}
+                      </td>
+                      <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">
+                        <button
+                          onClick={() => handleEdit(company)}
+                          className="text-blue-500 hover:text-blue-700 mr-2"
+                        >
+                          Edit
+                        </button>
                       </td>
                     </tr>
                   ))}

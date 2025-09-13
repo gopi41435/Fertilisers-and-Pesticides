@@ -14,19 +14,21 @@ import {
   ResponsiveContainer,
   PieChart,
   Pie,
-  Cell
+  Cell,
 } from 'recharts';
 
 interface InvoiceRecord {
   date: string;
   total_amount: number;
-  company_id: string | null; // Allow null for company_id
+  company_id: string | null;
   companies: { name: string }[] | null;
 }
 
 interface SaleRecord {
   purchase_date: string;
   total_price: number;
+  customer_id: string | null;
+  customers: { name: string }[] | null;
 }
 
 interface ReturnRecord {
@@ -42,14 +44,26 @@ interface CombinedData {
 }
 
 interface CompanyData {
-  id: string; // Unique identifier using company_id
+  id: string;
   name: string;
   purchases: number;
   sales: number;
   total: number;
 }
 
+interface CustomerData {
+  id: string;
+  name: string;
+  purchases: number; // Using sales total_price as "purchases" from buyer perspective
+  total: number;
+}
+
 interface Company {
+  id: string;
+  name: string;
+}
+
+interface Customer {
   id: string;
   name: string;
 }
@@ -67,7 +81,7 @@ interface PieTooltipProps {
   active?: boolean;
   payload?: Array<{
     value: number;
-    payload: CompanyData;
+    payload: CompanyData | CustomerData;
   }>;
 }
 
@@ -76,6 +90,7 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'
 export default function Overview() {
   const [combinedData, setCombinedData] = useState<CombinedData[]>([]);
   const [companyData, setCompanyData] = useState<CompanyData[]>([]);
+  const [buyerData, setBuyerData] = useState<CustomerData[]>([]);
   const [totalPurchases, setTotalPurchases] = useState<number>(0);
   const [totalSales, setTotalSales] = useState<number>(0);
   const [purchaseGrowth, setPurchaseGrowth] = useState<number | null>(null);
@@ -107,7 +122,7 @@ export default function Overview() {
 
       if (invoicesError) throw invoicesError;
 
-      // Fetch all companies to handle missing relations
+      // Fetch all companies
       const { data: companiesData, error: companiesError } = await supabase
         .from('companies')
         .select('id, name');
@@ -123,10 +138,17 @@ export default function Overview() {
 
       if (returnsError) throw returnsError;
 
-      // Fetch sales
+      // Fetch sales with customer details
       const { data: salesData, error: salesError } = await supabase
         .from('sales')
-        .select('purchase_date, total_price')
+        .select(`
+          purchase_date,
+          total_price,
+          customer_id,
+          customers (
+            name
+          )
+        `)
         .order('purchase_date', { ascending: true });
 
       if (salesError) throw salesError;
@@ -140,7 +162,12 @@ export default function Overview() {
 
       const returns = (returnsData || []) as ReturnRecord[];
 
-      const sales = (salesData || []) as SaleRecord[];
+      const sales = (salesData || []).map((sale: SaleRecord) => ({
+        purchase_date: sale.purchase_date,
+        total_price: sale.total_price,
+        customer_id: sale.customer_id,
+        customers: sale.customers || null,
+      })) as SaleRecord[];
 
       // Calculate totals
       const grossPurchaseAmount = purchases.reduce((sum, invoice) => sum + invoice.total_amount, 0);
@@ -175,21 +202,21 @@ export default function Overview() {
       const allDates = Array.from(new Set([
         ...Object.keys(grossPurchasesByDate),
         ...Object.keys(returnsByDate),
-        ...Object.keys(salesByDate)
+        ...Object.keys(salesByDate),
       ])).sort();
 
       const chartData = allDates.map(date => ({
         date,
         purchases: (grossPurchasesByDate[date] || 0) - (returnsByDate[date] || 0),
-        sales: salesByDate[date] || 0
+        sales: salesByDate[date] || 0,
       }));
 
-      // Aggregate by company (gross purchases)
+      // Aggregate purchases by company
       const aggregatedByCompany = purchases.reduce<Record<string, { name: string; grossPurchases: number }>>((acc, invoice) => {
-        const companyId = invoice.company_id || 'unknown'; // Handle null company_id
+        const companyId = invoice.company_id || 'unknown';
         const companyName = invoice.companies && invoice.companies.length > 0
           ? invoice.companies[0].name
-          : companiesMap.get(companyId) || `Unknown Company (${companyId})`; // Fallback to companies table
+          : companiesMap.get(companyId) || `Unknown Company (${companyId})`;
 
         if (!acc[companyId]) {
           acc[companyId] = { name: companyName, grossPurchases: 0 };
@@ -198,7 +225,6 @@ export default function Overview() {
         return acc;
       }, {});
 
-      // Subtract returns per company
       returns.forEach((ret) => {
         const companyId = ret.company_id || 'unknown';
         if (aggregatedByCompany[companyId]) {
@@ -206,19 +232,43 @@ export default function Overview() {
         }
       });
 
-      // Map to CompanyData with correct id and name
       const companyChartData = Object.entries(aggregatedByCompany).map(([companyId, company]) => ({
         id: companyId,
         name: company.name,
         purchases: company.grossPurchases,
         sales: 0,
-        total: company.grossPurchases
+        total: company.grossPurchases,
       })).sort((a, b) => b.total - a.total);
 
-      // Log data for debugging
-      console.log('Company Data:', companyChartData);
+      // Aggregate sales by customer
+      const { data: customersData, error: customersError } = await supabase
+        .from('customers')
+        .select('id, name');
+      if (customersError) throw customersError;
 
-      // Calculate growth percentages (using net purchases)
+      const customersMap = new Map(customersData.map((c: Customer) => [c.id, c.name]));
+
+      const aggregatedByCustomer = sales.reduce<Record<string, { name: string; purchases: number }>>((acc, sale) => {
+        const customerId = sale.customer_id || 'unknown';
+        const customerName = sale.customers && sale.customers.length > 0
+          ? sale.customers[0].name
+          : customersMap.get(customerId) || `Unknown Customer (${customerId})`;
+
+        if (!acc[customerId]) {
+          acc[customerId] = { name: customerName, purchases: 0 };
+        }
+        acc[customerId].purchases += sale.total_price;
+        return acc;
+      }, {});
+
+      const buyerChartData = Object.entries(aggregatedByCustomer).map(([customerId, customer]) => ({
+        id: customerId,
+        name: customer.name,
+        purchases: customer.purchases,
+        total: customer.purchases,
+      })).sort((a, b) => b.total - a.total);
+
+      // Calculate growth percentages
       let pGrowth = null;
       let sGrowth = null;
 
@@ -238,6 +288,7 @@ export default function Overview() {
 
       setCombinedData(chartData);
       setCompanyData(companyChartData);
+      setBuyerData(buyerChartData);
       setTotalPurchases(totalPurchaseAmount);
       setTotalSales(totalSaleAmount);
       setTotalInvoices(invoiceCount);
@@ -273,6 +324,7 @@ export default function Overview() {
   const PieTooltip = ({ active, payload }: PieTooltipProps) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
+      const total = 'purchases' in data ? totalPurchases : totalSales; // Differentiate between company and buyer data
       return (
         <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
           <p className="font-medium">{data.name}</p>
@@ -280,7 +332,7 @@ export default function Overview() {
             {`Purchases: ₹${data.purchases.toLocaleString('en-IN')}`}
           </p>
           <p className="text-gray-500 text-sm">
-            {`${((data.purchases / totalPurchases) * 100).toFixed(1)}% of total purchases`}
+            {`${((data.purchases / total) * 100).toFixed(1)}% of total ${'purchases' in data ? 'purchases' : 'sales'}`}
           </p>
         </div>
       );
@@ -391,38 +443,55 @@ export default function Overview() {
         </div>
 
         {/* Charts Container */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6 lg:gap-8 mt-8">
           {/* Purchase Distribution by Company */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-            <h2 className="text-2xl font-bold text-gray-800 mb-6">Purchase Distribution by Company</h2>
-
+          <div className="bg-white p-6 rounded-2xl shadow-md border border-gray-100 hover:shadow-lg transition-shadow duration-300">
+            <h2 className="text-2xl font-bold text-gray-800 mb-4 border-b-2 border-teal-200 pb-2">
+              Purchase Distribution by Company
+            </h2>
             {isLoading ? (
-              <div className="flex justify-center items-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
-                <span className="ml-2 text-gray-600">Loading company data...</span>
+              <div className="flex justify-center items-center h-64">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-4 border-teal-600"></div>
+                <span className="ml-3 text-lg text-gray-600">Loading company data...</span>
               </div>
             ) : companyData.length === 0 ? (
-              <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+              <div className="flex flex-col items-center justify-center h-64 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-16 w-16 text-gray-400 mb-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+                  />
                 </svg>
-                <p className="text-gray-500">No company data available yet.</p>
+                <p className="text-gray-500 text-center">No company data available yet.</p>
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={350}>
                 <PieChart>
                   <Pie
                     data={companyData}
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
-                    outerRadius={80}
+                    label={({ name, percent }) =>
+                      `${name}: ${((percent || 0) * 100).toFixed(0)}%`
+                    }
+                    outerRadius={100}
                     fill="#8884d8"
                     dataKey="purchases"
                   >
                     {companyData.map((entry, index) => (
-                      <Cell key={`cell-${entry.id}`} fill={COLORS[index % COLORS.length]} />
+                      <Cell
+                        key={`cell-${entry.id}`}
+                        fill={COLORS[index % COLORS.length]}
+                      />
                     ))}
                   </Pie>
                   <Tooltip content={<PieTooltip />} />
@@ -431,75 +500,130 @@ export default function Overview() {
             )}
           </div>
 
-          {/* Performance Metrics */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-            <h2 className="text-2xl font-bold text-gray-800 mb-6">Key Performance Metrics</h2>
-
-            <div className="space-y-4">
-              <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
-                <span className="text-gray-700 font-medium">Gross Profit Margin</span>
-                <span className="text-lg font-bold text-green-600">
-                  {totalSales > 0 ? `${(((totalSales - totalPurchases) / totalSales) * 100).toFixed(1)}%` : 'N/A'}
-                </span>
+          {/* Purchase Distribution by Buyer */}
+          <div className="bg-white p-6 rounded-2xl shadow-md border border-gray-100 hover:shadow-lg transition-shadow duration-300">
+            <h2 className="text-2xl font-bold text-gray-800 mb-4 border-b-2 border-teal-200 pb-2">
+              Purchase Distribution by Buyer
+            </h2>
+            {isLoading ? (
+              <div className="flex justify-center items-center h-64">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-4 border-teal-600"></div>
+                <span className="ml-3 text-lg text-gray-600">Loading buyer data...</span>
               </div>
-
-              <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
-                <span className="text-gray-700 font-medium">Return on Investment</span>
-                <span className="text-lg font-bold text-blue-600">
-                  {totalPurchases > 0 ? `${(((totalSales - totalPurchases) / totalPurchases) * 100).toFixed(1)}%` : 'N/A'}
-                </span>
+            ) : buyerData.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-16 w-16 text-gray-400 mb-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+                  />
+                </svg>
+                <p className="text-gray-500 text-center">No buyer data available yet.</p>
               </div>
-
-              <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
-                <span className="text-gray-700 font-medium">Active Suppliers</span>
-                <span className="text-lg font-bold text-purple-600">{companyData.length}</span>
-              </div>
-
-              <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
-                <span className="text-gray-700 font-medium">Purchase/Sales Ratio</span>
-                <span className="text-lg font-bold text-orange-600">
-                  {totalSales > 0 ? `${(totalPurchases / totalSales).toFixed(2)}` : 'N/A'}
-                </span>
-              </div>
-            </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={350}>
+                <PieChart>
+                  <Pie
+                    data={buyerData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, percent }) =>
+                      `${name}: ${((percent || 0) * 100).toFixed(0)}%`
+                    }
+                    outerRadius={100}
+                    fill="#8884d8"
+                    dataKey="purchases"
+                  >
+                    {buyerData.map((entry, index) => (
+                      <Cell
+                        key={`cell-${entry.id}`}
+                        fill={COLORS[index % COLORS.length]}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<PieTooltip />} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
-        {/* Company Rankings Table */}
-        {companyData.length > 0 && (
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mt-8">
-            <h2 className="text-2xl font-bold text-gray-800 mb-6">Top Suppliers by Purchase Volume</h2>
-            <div className="overflow-x-auto rounded-2xl border border-gray-200">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-gradient-to-r from-teal-600 to-blue-600 text-white">
-                    <th className="px-6 py-4 text-left font-semibold">Rank</th>
-                    <th className="px-6 py-4 text-left font-semibold">Company Name</th>
-                    <th className="px-6 py-4 text-right font-semibold">Total Purchases</th>
-                    <th className="px-6 py-4 text-right font-semibold">% of Total</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {companyData.map((company, index) => (
-                    <tr key={company.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4 font-medium text-gray-900">#{index + 1}</td>
-                      <td className="px-6 py-4 text-gray-900 font-medium">{company.name}</td>
-                      <td className="px-6 py-4 text-right font-semibold text-teal-600">
-                        ₹{company.purchases.toLocaleString('en-IN')}
-                      </td>
-                      <td className="px-6 py-4 text-right text-gray-600">
-                        {((company.purchases / totalPurchases) * 100).toFixed(1)}%
-                      </td>
+        {/* Company and Buyer Rankings Tables */}
+        <div className="grid grid-cols-1 lg:grid-cols-1 gap-8 mt-8">
+          {companyData.length > 0 && (
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+              <h2 className="text-2xl font-bold text-gray-800 mb-6">Top Suppliers by Purchase Volume</h2>
+              <div className="overflow-x-auto rounded-2xl border border-gray-200">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gradient-to-r from-teal-600 to-blue-600 text-white">
+                      <th className="px-6 py-4 text-left font-semibold">Rank</th>
+                      <th className="px-6 py-4 text-left font-semibold">Company Name</th>
+                      <th className="px-6 py-4 text-right font-semibold">Total Purchases</th>
+                      <th className="px-6 py-4 text-right font-semibold">% of Total</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {companyData.map((company, index) => (
+                      <tr key={company.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 font-medium text-gray-900">#{index + 1}</td>
+                        <td className="px-6 py-4 text-gray-900 font-medium">{company.name}</td>
+                        <td className="px-6 py-4 text-right font-semibold text-teal-600">
+                          ₹{company.purchases.toLocaleString('en-IN')}
+                        </td>
+                        <td className="px-6 py-4 text-right text-gray-600">
+                          {((company.purchases / totalPurchases) * 100).toFixed(1)}%
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+
+          {buyerData.length > 0 && (
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+              <h2 className="text-2xl font-bold text-gray-800 mb-6">Top Buyers by Purchase Volume</h2>
+              <div className="overflow-x-auto rounded-2xl border border-gray-200">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gradient-to-r from-teal-600 to-blue-600 text-white">
+                      <th className="px-6 py-4 text-left font-semibold">Rank</th>
+                      <th className="px-6 py-4 text-left font-semibold">Buyer Name</th>
+                      <th className="px-6 py-4 text-right font-semibold">Total Purchases</th>
+                      <th className="px-6 py-4 text-right font-semibold">% of Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {buyerData.map((buyer, index) => (
+                      <tr key={buyer.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 font-medium text-gray-900">#{index + 1}</td>
+                        <td className="px-6 py-4 text-gray-900 font-medium">{buyer.name}</td>
+                        <td className="px-6 py-4 text-right font-semibold text-teal-600">
+                          ₹{buyer.purchases.toLocaleString('en-IN')}
+                        </td>
+                        <td className="px-6 py-4 text-right text-gray-600">
+                          {((buyer.purchases / totalSales) * 100).toFixed(1)}%
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
-
-

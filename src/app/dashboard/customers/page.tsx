@@ -42,6 +42,7 @@ interface SaleRecord {
   total_price: number;
   discount_price: number;
   purchase_date: string;
+  payment_status: 'paid' | 'unpaid';
   products: Product;
   customers: Customer;
 }
@@ -78,15 +79,16 @@ export default function SalesPage() {
 
   const [saleDate, setSaleDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [saleItems, setSaleItems] = useState<SaleItem[]>([{ productId: '', quantity: 1, discount: 0 }]);
+  const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid'>('paid');
   const [totalPrice, setTotalPrice] = useState<number>(0);
 
   // Form states for adding customers
   const [customerName, setCustomerName] = useState('');
-  const [customerEmail, setCustomerEmail] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
 
-  // Edit state
+  // Edit states
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [editingSale, setEditingSale] = useState<SaleRecord | null>(null);
 
   const fetchCustomers = useCallback(async () => {
@@ -170,7 +172,6 @@ export default function SalesPage() {
         .insert([
           {
             name: customerName,
-            email: customerEmail || null,
             phone: customerPhone || null,
             address: customerAddress || null,
           },
@@ -179,12 +180,42 @@ export default function SalesPage() {
       if (error) throw error;
       setCustomers([...customers, data[0]]);
       setCustomerName('');
-      setCustomerEmail('');
       setCustomerPhone('');
       setCustomerAddress('');
       toast.success('Customer added successfully!');
     } catch (error: unknown) {
       toast.error(`Error adding customer: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const updateCustomer = async () => {
+    if (!editingCustomer || !customerName.trim()) {
+      toast.error('Please enter customer name');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const { data, error } = await supabase
+        .from('customers')
+        .update({
+          name: customerName,
+          phone: customerPhone || null,
+          address: customerAddress || null,
+        })
+        .eq('id', editingCustomer.id)
+        .select();
+      if (error) throw error;
+      setCustomers(customers.map(c => c.id === editingCustomer.id ? data[0] : c));
+      setEditingCustomer(null);
+      setCustomerName('');
+      setCustomerPhone('');
+      setCustomerAddress('');
+      toast.success('Customer updated successfully!');
+    } catch (error: unknown) {
+      toast.error(`Error updating customer: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
@@ -243,6 +274,7 @@ export default function SalesPage() {
           total_price: totalPrice,
           discount_price: item.discount || null,
           purchase_date: saleDate,
+          payment_status: paymentStatus,
         };
       });
 
@@ -268,6 +300,7 @@ export default function SalesPage() {
       toast.success('Sale recorded successfully!');
       setSaleItems([{ productId: '', quantity: 1, discount: 0 }]);
       setSelectedSaleCustomer('');
+      setPaymentStatus('paid');
     } catch (error: unknown) {
       toast.error(`Error recording sale: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
@@ -279,7 +312,7 @@ export default function SalesPage() {
   const deleteSale = async (saleId: string, productId: string, quantity: number) => {
     try {
       setIsLoading(true);
-      
+
       // First, restore the product quantity
       const product = products.find((p) => p.id === productId);
       if (product) {
@@ -287,24 +320,24 @@ export default function SalesPage() {
           .from('products')
           .update({ quantity: product.quantity + quantity })
           .eq('id', productId);
-        
+
         if (updateError) throw updateError;
       }
-      
+
       // Then delete the sale record
       const { error: deleteError } = await supabase
         .from('sales')
         .delete()
         .eq('id', saleId);
-      
+
       if (deleteError) throw deleteError;
-      
+
       // Refresh data
       await fetchProducts();
       if (selectedReportCustomer) {
         await fetchSalesHistory(selectedReportCustomer);
       }
-      
+
       toast.success('Sale deleted successfully! Product quantity restored.');
     } catch (error: unknown) {
       toast.error(`Error deleting sale: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -314,52 +347,73 @@ export default function SalesPage() {
   };
 
   // Function to edit a sale
-  const editSale = async (saleId: string, newQuantity: number) => {
+  const editSale = async (saleId: string) => {
     try {
       setIsLoading(true);
-      
+
       const sale = salesHistory.find((s) => s.id === saleId);
       if (!sale) throw new Error('Sale not found');
-      
+
       const product = products.find((p) => p.id === sale.product_id);
       if (!product) throw new Error('Product not found');
-      
-      // Calculate the difference in quantity
-      const quantityDifference = newQuantity - sale.quantity;
-      
-      // Check if there's enough stock for the increase
+
+      // Prepare updated sale items
+      const validItems = saleItems.filter((item) => item.productId);
+      if (validItems.length === 0) throw new Error('No valid items to update');
+
+      // Calculate quantity difference for the first item (assuming single product per sale for simplicity)
+      const originalItem = saleItems[0];
+      const originalProduct = products.find((p) => p.id === originalItem.productId);
+      const quantityDifference = (originalProduct ? originalItem.quantity : 0) - sale.quantity;
+
+      // Check stock for quantity increase
       if (quantityDifference > 0 && quantityDifference > product.quantity) {
         toast.error(`Not enough stock for ${product.name}. Available: ${product.quantity}`);
         return;
       }
-      
+
       // Update product quantity
-      const { error: updateProductError } = await supabase
-        .from('products')
-        .update({ quantity: product.quantity - quantityDifference })
-        .eq('id', product.id);
-      
-      if (updateProductError) throw updateProductError;
-      
+      if (product) {
+        const { error: updateProductError } = await supabase
+          .from('products')
+          .update({ quantity: product.quantity - quantityDifference })
+          .eq('id', product.id);
+
+        if (updateProductError) throw updateProductError;
+      }
+
       // Update sale record
-      const newTotalPrice = product.price * newQuantity - (sale.discount_price || 0);
+      const newTotalPrice = validItems.reduce((total, item) => {
+        const prod = products.find((p) => p.id === item.productId);
+        return total + (prod ? prod.price * item.quantity - item.discount : 0);
+      }, 0);
+
       const { error: updateSaleError } = await supabase
         .from('sales')
-        .update({ 
-          quantity: newQuantity,
-          total_price: newTotalPrice
+        .update({
+          customer_id: selectedSaleCustomer,
+          product_id: validItems[0].productId,
+          quantity: validItems[0].quantity,
+          total_price: newTotalPrice,
+          discount_price: validItems[0].discount || null,
+          purchase_date: saleDate,
+          payment_status: paymentStatus,
         })
         .eq('id', saleId);
-      
+
       if (updateSaleError) throw updateSaleError;
-      
+
       // Refresh data
       await fetchProducts();
       if (selectedReportCustomer) {
         await fetchSalesHistory(selectedReportCustomer);
       }
-      
+
       setEditingSale(null);
+      setSaleItems([{ productId: '', quantity: 1, discount: 0 }]);
+      setSelectedSaleCustomer('');
+      setSaleDate(new Date().toISOString().split('T')[0]);
+      setPaymentStatus('paid');
       toast.success('Sale updated successfully!');
     } catch (error: unknown) {
       toast.error(`Error editing sale: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -405,12 +459,14 @@ export default function SalesPage() {
     doc.text('Customer Details:', 14, 55);
     doc.setFont('helvetica', 'normal');
     doc.text(`Name: ${customer.name}`, 14, 62);
-    doc.text(`Email: ${customer.email || 'N/A'}`, 14, 69);
-    doc.text(`Phone: ${customer.phone || 'N/A'}`, 14, 76);
-    doc.text(`Address: ${customer.address || 'N/A'}`, 14, 83);
+    doc.text(`Phone: ${customer.phone || 'N/A'}`, 14, 69);
+    doc.text(`Address: ${customer.address || 'N/A'}`, 14, 76);
+
+    // Payment Status
+    doc.text(`Payment Status: ${paymentStatus === 'paid' ? 'Paid' : 'Unpaid'}`, 14, 83);
 
     // Products table
-    const headers = [['#', 'Product', 'Qty', 'Price', 'Discount', 'Total']];
+    const headers = [['#', 'Product', 'Qty', 'Unit', 'Price', 'Discount', 'Total']];
     const rows = validItems.map((item, i) => {
       const product = products.find((p) => p.id === item.productId);
       const price = product ? product.price : 0;
@@ -420,9 +476,10 @@ export default function SalesPage() {
         (i + 1).toString(),
         product ? product.name : '',
         item.quantity.toString(),
-        `₹${price.toFixed(2)}`,
-        `₹${item.discount.toFixed(2)}`,
-        `₹${itemTotal.toFixed(2)}`,
+        product?.quantity_unit || 'unit',
+        `${price.toFixed(2)}`,
+        `${item.discount.toFixed(2)}`,
+        `${itemTotal.toFixed(2)}`,
       ];
     });
 
@@ -440,16 +497,26 @@ export default function SalesPage() {
         font: 'helvetica',
         fontSize: 11,
         cellPadding: 3,
+        lineWidth: 0.1,
+        lineColor: [0, 0, 0],
       },
       margin: { top: 90 },
       foot: [
         [
-          { content: '', colSpan: 4, styles: { halign: 'right' } },
+          { content: '', colSpan: 5, styles: { halign: 'right' } },
           { content: 'Total Amount', styles: { halign: 'right', fontStyle: 'bold' } },
-          { content: `₹${totalPrice.toFixed(2)}`, styles: { halign: 'right', fontStyle: 'bold' } },
+          { content: `${totalPrice.toFixed(2)}`, styles: { halign: 'right', fontStyle: 'bold' } },
         ],
       ],
     });
+
+    // Pending Amount for unpaid
+    if (paymentStatus === 'unpaid') {
+      const finalY = doc.lastAutoTable.finalY + 10;
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(220, 53, 69); // Red color for unpaid
+      doc.text(`Pending Amount: ${totalPrice.toFixed(2)}`, 14, finalY);
+    }
 
     // Footer
     doc.setFontSize(10);
@@ -494,9 +561,8 @@ export default function SalesPage() {
       doc.text('Customer Details:', 14, 55);
       doc.setFont('helvetica', 'normal');
       doc.text(`Name: ${customer.name}`, 14, 62);
-      doc.text(`Email: ${customer.email || 'N/A'}`, 14, 69);
-      doc.text(`Phone: ${customer.phone || 'N/A'}`, 14, 76);
-      doc.text(`Address: ${customer.address || 'N/A'}`, 14, 83);
+      doc.text(`Phone: ${customer.phone || 'N/A'}`, 14, 69);
+      doc.text(`Address: ${customer.address || 'N/A'}`, 14, 76);
 
       if (salesHistory.length > 0) {
         // Group sales by date and calculate totals
@@ -512,13 +578,14 @@ export default function SalesPage() {
 
         let currentY = 95;
 
-        // Create a summary table with SNO, DATE, Number Of Items, Total Sales
-        const summaryHeaders = [['SNO', 'DATE', 'NUMBER OF ITEMS', 'TOTAL SALES']];
+        // Create a summary table with SNO, DATE, Number Of Items, Total Sales, Payment Status
+        const summaryHeaders = [['SNO', 'DATE', 'NUMBER OF ITEMS', 'TOTAL SALES', 'PAYMENT STATUS']];
         const summaryRows = Object.entries(salesByDate).map(([date], index) => [
           (index + 1).toString(),
           new Date(date).toLocaleDateString('en-IN'),
           salesByDate[date].items.length.toString(),
-          `₹${salesByDate[date].total.toFixed(2)}`,
+          `${salesByDate[date].total.toFixed(2)}`,
+          salesByDate[date].items[0].payment_status,
         ]);
 
         doc.setFont('helvetica', 'bold');
@@ -539,38 +606,50 @@ export default function SalesPage() {
             font: 'helvetica',
             fontSize: 11,
             cellPadding: 3,
+            lineWidth: 0.1,
+            lineColor: [0, 0, 0],
           },
         });
 
         currentY = doc.lastAutoTable.finalY + 20;
 
-        // Grand total
-        const grandTotal = salesHistory.reduce((total, sale) => total + sale.total_price, 0);
+        // Calculate totals
+        const totalAmount = salesHistory.reduce((total, sale) => total + sale.total_price, 0);
+        const paidAmount = salesHistory
+          .filter((sale) => sale.payment_status === 'paid')
+          .reduce((total, sale) => total + sale.total_price, 0);
+        const grandTotal = totalAmount - paidAmount;
 
+        // Display totals
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(15, 118, 110);
-        doc.text(`GRAND TOTAL: ₹${grandTotal.toFixed(2)}`, 14, currentY);
+        doc.text(`Total Amount: ${totalAmount.toFixed(2)}`, 14, currentY);
+        currentY += 10;
+        doc.text(`Paid Amount: ${paidAmount.toFixed(2)}`, 14, currentY);
+        currentY += 10;
+        doc.text(`Grand Total: ${grandTotal.toFixed(2)}`, 14, currentY);
         currentY += 15;
 
-        // Detailed sales for each date
-        Object.entries(salesByDate).forEach(([date, data]) => {
-          if (currentY > 200) {
-            doc.addPage();
-            currentY = 20;
-          }
+        // Detailed sales start on next page
+        doc.addPage();
+        currentY = 20;
 
+        // Detailed sales for each date on the same page
+        Object.entries(salesByDate).forEach(([date, data], index) => {
           doc.setFont('helvetica', 'bold');
           doc.setTextColor(0, 0, 0);
           doc.text(`DETAILED SALES FOR ${new Date(date).toLocaleDateString('en-IN')}`, 14, currentY);
           currentY += 10;
 
-          const detailHeaders = [['PRODUCT', 'QUANTITY', 'PRICE', 'DISCOUNT', 'TOTAL']];
+          const detailHeaders = [['PRODUCT', 'QUANTITY', 'UNIT', 'PRICE', 'DISCOUNT', 'TOTAL', 'PAYMENT STATUS']];
           const detailRows = data.items.map((sale) => [
             sale.products?.name || 'Unknown Product',
             sale.quantity.toString(),
-            `₹${sale.products?.price?.toFixed(2) || '0.00'}`,
-            `₹${(sale.discount_price || 0).toFixed(2)}`, // Handle null discount_price
-            `₹${sale.total_price.toFixed(2)}`,
+            sale.products?.quantity_unit || 'unit',
+            `${(sale.products?.price || 0).toFixed(2)}`,
+            `${(sale.discount_price || 0).toFixed(2)}`,
+            `${sale.total_price.toFixed(2)}`,
+            sale.payment_status,
           ]);
 
           autoTable(doc, {
@@ -587,12 +666,17 @@ export default function SalesPage() {
               font: 'helvetica',
               fontSize: 10,
               cellPadding: 2,
+              lineWidth: 0.1,
+              lineColor: [0, 0, 0],
             },
           });
 
           currentY = doc.lastAutoTable.finalY + 15;
 
-          if (currentY < doc.internal.pageSize.height - 50) {
+          if (currentY > doc.internal.pageSize.height - 50 && index < Object.keys(salesByDate).length - 1) {
+            doc.addPage();
+            currentY = 20;
+          } else if (index < Object.keys(salesByDate).length - 1) {
             doc.setDrawColor(200, 200, 200);
             doc.line(14, currentY, doc.internal.pageSize.width - 14, currentY);
             currentY += 10;
@@ -620,6 +704,14 @@ export default function SalesPage() {
     if (selected) {
       fetchSalesHistory(selected.value);
     }
+  };
+
+  const handleEditSale = (sale: SaleRecord) => {
+    setEditingSale(sale);
+    setSelectedSaleCustomer(sale.customer_id);
+    setSaleDate(sale.purchase_date);
+    setSaleItems([{ productId: sale.product_id, quantity: sale.quantity, discount: sale.discount_price || 0 }]);
+    setPaymentStatus(sale.payment_status);
   };
 
   return (
@@ -675,16 +767,6 @@ export default function SalesPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs sm:text-sm md:text-sm font-semibold text-gray-700 mb-2">Email</label>
-                  <input
-                    type="email"
-                    value={customerEmail}
-                    onChange={(e) => setCustomerEmail(e.target.value)}
-                    className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all text-xs sm:text-sm"
-                    placeholder="Enter email address"
-                  />
-                </div>
-                <div>
                   <label className="block text-xs sm:text-sm md:text-sm font-semibold text-gray-700 mb-2">Phone</label>
                   <input
                     type="text"
@@ -705,13 +787,24 @@ export default function SalesPage() {
                   />
                 </div>
               </div>
-              <button
-                onClick={addCustomer}
-                disabled={isLoading}
-                className="w-full sm:w-auto bg-gradient-to-r from-teal-600 to-blue-600 hover:from-teal-700 hover:to-blue-700 text-white font-semibold py-2 sm:py-3 px-4 sm:px-6 rounded-lg sm:rounded-xl transition-all duration-200 transform hover:scale-105 shadow-md"
-              >
-                {isLoading ? 'Adding...' : 'Add Customer'}
-              </button>
+              <div className="flex gap-4">
+                <button
+                  onClick={addCustomer}
+                  disabled={isLoading}
+                  className="flex-1 bg-gradient-to-r from-teal-600 to-blue-600 hover:from-teal-700 hover:to-blue-700 text-white font-semibold py-2 sm:py-3 px-4 sm:px-6 rounded-lg sm:rounded-xl transition-all duration-200 transform hover:scale-105 shadow-md"
+                >
+                  {isLoading ? 'Adding...' : 'Add Customer'}
+                </button>
+                {editingCustomer && (
+                  <button
+                    onClick={updateCustomer}
+                    disabled={isLoading}
+                    className="flex-1 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white font-semibold py-2 sm:py-3 px-4 sm:px-6 rounded-lg sm:rounded-xl transition-all duration-200 transform hover:scale-105 shadow-md"
+                  >
+                    {isLoading ? 'Updating...' : 'Update Customer'}
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Customer List */}
@@ -741,18 +834,30 @@ export default function SalesPage() {
                     <thead>
                       <tr className="bg-gradient-to-r from-teal-600 to-blue-600 text-white">
                         <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Name</th>
-                        <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Email</th>
                         <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Phone</th>
                         <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Address</th>
+                        <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {customers.map((customer) => (
                         <tr key={customer.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-gray-900">{customer.name}</td>
-                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600">{customer.email || '-'}</td>
                           <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600">{customer.phone || '-'}</td>
                           <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600">{customer.address || '-'}</td>
+                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">
+                            <button
+                              onClick={() => {
+                                setEditingCustomer(customer);
+                                setCustomerName(customer.name);
+                                setCustomerPhone(customer.phone || '');
+                                setCustomerAddress(customer.address || '');
+                              }}
+                              className="text-blue-500 hover:text-blue-700 mr-2"
+                            >
+                              Edit
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -769,7 +874,7 @@ export default function SalesPage() {
             <div className="bg-gradient-to-r from-teal-50 to-blue-50 p-4 sm:p-6 rounded-xl sm:rounded-2xl">
               <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-4 sm:mb-6">Record New Sale</h2>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6">
                 <div>
                   <label className="block text-xs sm:text-sm md:text-sm font-semibold text-gray-700 mb-2">Select Customer *</label>
                   <Select
@@ -797,6 +902,23 @@ export default function SalesPage() {
                     required
                   />
                 </div>
+                <div>
+                  <label className="block text-xs sm:text-sm md:text-sm font-semibold text-gray-700 mb-2">Payment Status *</label>
+                  <Select
+                    value={{ value: paymentStatus, label: paymentStatus === 'paid' ? 'Paid' : 'Unpaid' }}
+                    onChange={(selected: SingleValue<{ value: 'paid' | 'unpaid'; label: string }>) =>
+                      setPaymentStatus(selected ? selected.value : 'paid')
+                    }
+                    options={[
+                      { value: 'paid', label: 'Paid' },
+                      { value: 'unpaid', label: 'Unpaid' },
+                    ]}
+                    isSearchable={false}
+                    classNamePrefix="react-select"
+                    className="w-full text-xs sm:text-sm"
+                    required
+                  />
+                </div>
               </div>
 
               <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4 sm:mb-6">Products</h3>
@@ -810,7 +932,7 @@ export default function SalesPage() {
                         products.find((p) => p.id === item.productId)
                           ? {
                             value: item.productId,
-                            label: `${products.find((p) => p.id === item.productId)?.name || ''} - ${products.find((p) => p.id === item.productId)?.quantity_unit || 'unit'} - ₹${products.find((p) => p.id === item.productId)?.price.toFixed(2) || '0.00'} (Stock: ${products.find((p) => p.id === item.productId)?.quantity || 0}${products.find((p) => p.id === item.productId)?.quantity === 0 ? ' - OUT OF STOCK' : (products.find((p) => p.id === item.productId)?.quantity || 0) <= 5 ? ' - LOW STOCK' : ''})`,
+                            label: `${products.find((p) => p.id === item.productId)?.name || ''} - ${products.find((p) => p.id === item.productId)?.quantity_unit || 'unit'} - ${products.find((p) => p.id === item.productId)?.price.toFixed(2) || '0.00'} (Stock: ${products.find((p) => p.id === item.productId)?.quantity || 0}${products.find((p) => p.id === item.productId)?.quantity === 0 ? ' - OUT OF STOCK' : (products.find((p) => p.id === item.productId)?.quantity || 0) <= 5 ? ' - LOW STOCK' : ''})`,
                           }
                           : null
                       }
@@ -819,7 +941,7 @@ export default function SalesPage() {
                       }
                       options={products.map((product) => ({
                         value: product.id,
-                        label: `${product.name} - ${product.quantity_unit || 'unit'} - ₹${product.price.toFixed(2)} (Stock: ${product.quantity}${product.quantity === 0 ? ' - OUT OF STOCK' : product.quantity <= 5 ? ' - LOW STOCK' : ''})`,
+                        label: `${product.name} - ${product.quantity_unit || 'unit'} - ${product.price.toFixed(2)} (Stock: ${product.quantity}${product.quantity === 0 ? ' - OUT OF STOCK' : product.quantity <= 5 ? ' - LOW STOCK' : ''})`,
                       }))}
                       isOptionDisabled={(option) => {
                         const product = products.find((p) => p.id === option.value);
@@ -904,6 +1026,15 @@ export default function SalesPage() {
                 >
                   📄 Generate Receipt
                 </button>
+                {editingSale && (
+                  <button
+                    onClick={() => editSale(editingSale.id)}
+                    disabled={isLoading}
+                    className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-2 sm:py-3 px-4 sm:px-6 rounded-lg sm:rounded-xl transition-all duration-200 transform hover:scale-105 shadow-md text-xs sm:text-sm"
+                  >
+                    {isLoading ? '🔄 Updating...' : '📝 Update Sale'}
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -953,6 +1084,7 @@ export default function SalesPage() {
                         <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Qty</th>
                         <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Price</th>
                         <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Total</th>
+                        <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Payment Status</th>
                         <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Actions</th>
                       </tr>
                     </thead>
@@ -969,7 +1101,7 @@ export default function SalesPage() {
                                 type="number"
                                 min="1"
                                 defaultValue={sale.quantity}
-                                onBlur={(e) => editSale(sale.id, parseInt(e.target.value))}
+                                onBlur={() => editSale(sale.id)}
                                 className="w-16 px-1 py-0.5 border border-gray-300 rounded text-xs"
                               />
                             ) : (
@@ -978,13 +1110,14 @@ export default function SalesPage() {
                           </td>
                           <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600">₹{sale.products?.price.toFixed(2)}</td>
                           <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-semibold text-teal-600">₹{sale.total_price.toFixed(2)}</td>
+                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600">{sale.payment_status}</td>
                           <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">
                             <div className="flex space-x-2">
                               <button
-                                onClick={() => setEditingSale(editingSale?.id === sale.id ? null : sale)}
+                                onClick={() => handleEditSale(sale)}
                                 className="text-blue-500 hover:text-blue-700"
                               >
-                                {editingSale?.id === sale.id ? 'Cancel' : 'Edit'}
+                                Edit
                               </button>
                               <button
                                 onClick={() => deleteSale(sale.id, sale.product_id, sale.quantity)}
@@ -1007,4 +1140,4 @@ export default function SalesPage() {
     </div>
   );
 }
-
+ 

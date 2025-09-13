@@ -74,17 +74,17 @@ export default function ReturnsPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [allReturnsHistory, setAllReturnsHistory] = useState<ReturnRecord[]>([]);
   const [returnsHistory, setReturnsHistory] = useState<ReturnRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Separate company selection states
   const [selectedReturnCompany, setSelectedReturnCompany] = useState<string>('');
   const [selectedReportCompany, setSelectedReportCompany] = useState<string>('');
-
   const [selectedInvoice, setSelectedInvoice] = useState<string>('');
   const [returnDate, setReturnDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [returnItems, setReturnItems] = useState<ReturnItem[]>([{ productId: '', quantity: 1, discount: 0 }]);
   const [totalPrice, setTotalPrice] = useState<number>(0);
+  const [editingReturn, setEditingReturn] = useState<ReturnRecord | null>(null);
 
   const fetchCompanies = useCallback(async () => {
     try {
@@ -129,6 +129,26 @@ export default function ReturnsPage() {
     }
   }, []);
 
+  const fetchAllReturnsHistory = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const { data, error } = await supabase
+        .from('returns')
+        .select(`
+          *,
+          products (id, name, price, quantity, quantity_unit),
+          companies (id, name)
+        `)
+        .order('return_date', { ascending: false });
+      if (error) throw error;
+      setAllReturnsHistory(data || []);
+    } catch (error: unknown) {
+      toast.error(`Error fetching returns: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   const fetchReturnsHistory = useCallback(async (companyId: string) => {
     try {
       setIsLoading(true);
@@ -150,11 +170,11 @@ export default function ReturnsPage() {
     }
   }, []);
 
-  // Load initial data when component mounts
   useEffect(() => {
     fetchCompanies();
     fetchProducts();
-  }, [fetchCompanies, fetchProducts]);
+    fetchAllReturnsHistory();
+  }, [fetchCompanies, fetchProducts, fetchAllReturnsHistory]);
 
   const calculateTotalPrice = useCallback(() => {
     let total = 0;
@@ -189,6 +209,31 @@ export default function ReturnsPage() {
     }
   };
 
+  const handleEditReturn = (returnRecord: ReturnRecord) => {
+    setEditingReturn(returnRecord);
+    setSelectedReturnCompany(returnRecord.company_id);
+    setSelectedInvoice(returnRecord.invoice_id);
+    setReturnDate(returnRecord.return_date);
+    setReturnItems([{ productId: returnRecord.product_id, quantity: returnRecord.quantity, discount: returnRecord.discount_price || 0 }]);
+    fetchInvoicesForCompany(returnRecord.company_id);
+  };
+
+  const handleDeleteReturn = async (returnId: string) => {
+    if (confirm('Are you sure you want to delete this return?')) {
+      try {
+        setIsLoading(true);
+        const { error } = await supabase.from('returns').delete().eq('id', returnId);
+        if (error) throw error;
+        await fetchAllReturnsHistory();
+        toast.success('Return deleted successfully!');
+      } catch (error: unknown) {
+        toast.error(`Error deleting return: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  };
+
   const recordReturn = async () => {
     if (!selectedReturnCompany) {
       toast.error('Please select a company');
@@ -208,7 +253,6 @@ export default function ReturnsPage() {
     try {
       setIsLoading(true);
 
-      // Check stock availability for all items (since returning, quantity <= current stock)
       for (const item of validItems) {
         const product = products.find((p) => p.id === item.productId);
         if (product && item.quantity > product.quantity) {
@@ -232,31 +276,62 @@ export default function ReturnsPage() {
         };
       });
 
-      // Update product quantities (decrease since returning to supplier)
-      for (const item of validItems) {
-        const product = products.find((p) => p.id === item.productId);
-        if (product) {
-          const { error } = await supabase
-            .from('products')
-            .update({ quantity: product.quantity - item.quantity })
-            .eq('id', product.id);
+      if (editingReturn) {
+        const { error } = await supabase
+          .from('returns')
+          .update({
+            company_id: selectedReturnCompany,
+            invoice_id: selectedInvoice,
+            product_id: returnItems[0].productId,
+            quantity: returnItems[0].quantity,
+            total_price: returnItems[0].quantity * (products.find((p) => p.id === returnItems[0].productId)?.price || 0) - returnItems[0].discount,
+            discount_price: returnItems[0].discount || null,
+            return_date: returnDate,
+          })
+          .eq('id', editingReturn.id);
 
-          if (error) throw error;
+        if (error) throw error;
+
+        // Adjust product quantity based on the difference
+        const originalQuantity = editingReturn.quantity;
+        const newQuantity = returnItems[0].quantity;
+        const product = products.find((p) => p.id === returnItems[0].productId);
+        if (product) {
+          const { error: updateError } = await supabase
+            .from('products')
+            .update({ quantity: product.quantity + (originalQuantity - newQuantity) })
+            .eq('id', product.id);
+          if (updateError) throw updateError;
         }
+
+        toast.success('Return updated successfully!');
+      } else {
+        for (const item of validItems) {
+          const product = products.find((p) => p.id === item.productId);
+          if (product) {
+            const { error } = await supabase
+              .from('products')
+              .update({ quantity: product.quantity - item.quantity })
+              .eq('id', product.id);
+
+            if (error) throw error;
+          }
+        }
+
+        const { error } = await supabase.from('returns').insert(returnData);
+        if (error) throw error;
+
+        toast.success('Return recorded successfully!');
       }
 
-      const { error } = await supabase.from('returns').insert(returnData);
-      if (error) throw error;
-
-      // Refresh products to get updated quantities
       await fetchProducts();
-
-      toast.success('Return recorded successfully!');
+      await fetchAllReturnsHistory();
       setReturnItems([{ productId: '', quantity: 1, discount: 0 }]);
       setSelectedReturnCompany('');
       setSelectedInvoice('');
+      setEditingReturn(null);
     } catch (error: unknown) {
-      toast.error(`Error recording return: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(`Error ${editingReturn ? 'updating' : 'recording'} return: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
@@ -279,7 +354,6 @@ export default function ReturnsPage() {
 
     const doc = new jsPDF() as JSPDFWithAutoTable;
 
-    // Title
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(20);
     doc.setTextColor(15, 118, 110);
@@ -289,18 +363,15 @@ export default function ReturnsPage() {
     doc.setTextColor(0, 0, 0);
     doc.text('RETURN RECEIPT', 105, 30, { align: 'center' });
 
-    // Return Date
     doc.setFontSize(12);
     doc.setFont('helvetica', 'normal');
     doc.text(`Date: ${new Date(returnDate).toLocaleDateString('en-IN')}`, 14, 45);
 
-    // Company Info
     doc.setFont('helvetica', 'bold');
     doc.text('Company Details:', 14, 55);
     doc.setFont('helvetica', 'normal');
     doc.text(`Name: ${company.name}`, 14, 62);
 
-    // Products table
     const headers = [['#', 'Product', 'Qty', 'Price', 'Discount', 'Total']];
     const rows = validItems.map((item, i) => {
       const product = products.find((p) => p.id === item.productId);
@@ -342,7 +413,6 @@ export default function ReturnsPage() {
       ],
     });
 
-    // Footer
     doc.setFontSize(10);
     doc.setTextColor(100, 100, 100);
     doc.text('Thank you for your business!', 105, doc.internal.pageSize.height - 20, { align: 'center' });
@@ -365,7 +435,6 @@ export default function ReturnsPage() {
 
       const doc = new jsPDF() as JSPDFWithAutoTable;
 
-      // Title
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(20);
       doc.setTextColor(15, 118, 110);
@@ -375,19 +444,16 @@ export default function ReturnsPage() {
       doc.setTextColor(0, 0, 0);
       doc.text('COMPANY RETURN REPORT', 105, 30, { align: 'center' });
 
-      // Report Date
       doc.setFontSize(12);
       doc.setFont('helvetica', 'normal');
       doc.text(`Report Generated: ${new Date().toLocaleDateString('en-IN')}`, 14, 45);
 
-      // Company Info
       doc.setFont('helvetica', 'bold');
       doc.text('Company Details:', 14, 55);
       doc.setFont('helvetica', 'normal');
       doc.text(`Name: ${company.name}`, 14, 62);
 
       if (returnsHistory.length > 0) {
-        // Group returns by date and calculate totals
         const returnsByDate: ReturnsByDate = {};
 
         returnsHistory.forEach((ret) => {
@@ -400,7 +466,6 @@ export default function ReturnsPage() {
 
         let currentY = 95;
 
-        // Create a summary table with SNO, DATE, Number Of Items, Total Returns
         const summaryHeaders = [['SNO', 'DATE', 'NUMBER OF ITEMS', 'TOTAL RETURNS']];
         const summaryRows = Object.entries(returnsByDate).map(([date], index) => [
           (index + 1).toString(),
@@ -432,7 +497,6 @@ export default function ReturnsPage() {
 
         currentY = doc.lastAutoTable.finalY + 20;
 
-        // Grand total
         const grandTotal = returnsHistory.reduce((total, ret) => total + ret.total_price, 0);
 
         doc.setFont('helvetica', 'bold');
@@ -440,7 +504,6 @@ export default function ReturnsPage() {
         doc.text(`GRAND TOTAL: ₹${grandTotal.toFixed(2)}`, 14, currentY);
         currentY += 15;
 
-        // Detailed returns for each date
         Object.entries(returnsByDate).forEach(([date, data]) => {
           if (currentY > 200) {
             doc.addPage();
@@ -498,7 +561,6 @@ export default function ReturnsPage() {
     }
   };
 
-  // Fixed onChange handlers for Select components
   const handleReturnCompanyChange = (selected: SingleValue<SelectOption>) => {
     const companyId = selected ? selected.value : '';
     setSelectedReturnCompany(companyId);
@@ -561,7 +623,9 @@ export default function ReturnsPage() {
         {activeTab === 'returns' && (
           <div className="space-y-6 sm:space-y-8">
             <div className="bg-gradient-to-r from-teal-50 to-blue-50 p-4 sm:p-6 rounded-xl sm:rounded-2xl">
-              <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-4 sm:mb-6">Record New Return</h2>
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-4 sm:mb-6">
+                {editingReturn ? 'Edit Return' : 'Record New Return'}
+              </h2>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6">
                 <div>
@@ -641,6 +705,7 @@ export default function ReturnsPage() {
                       placeholder="Search and select a product..."
                       classNamePrefix="react-select"
                       className="w-full text-xs sm:text-sm"
+                      isDisabled={!!editingReturn}
                       isClearable
                     />
                   </div>
@@ -674,7 +739,7 @@ export default function ReturnsPage() {
                     </div>
                   </div>
                   <div className="md:col-span-1 flex items-end justify-center">
-                    {returnItems.length > 1 && (
+                    {returnItems.length > 1 && !editingReturn && (
                       <button
                         onClick={() => removeReturnItem(index)}
                         className="p-1 sm:p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg sm:rounded-xl transition-colors"
@@ -689,6 +754,7 @@ export default function ReturnsPage() {
               <button
                 onClick={addReturnItem}
                 className="flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 sm:py-3 px-4 sm:px-6 rounded-lg sm:rounded-xl transition-all duration-200 mb-4 sm:mb-6"
+                disabled={!!editingReturn}
               >
                 <span>➕</span>
                 <span>Add Another Product</span>
@@ -707,17 +773,79 @@ export default function ReturnsPage() {
                   disabled={isLoading}
                   className="flex-1 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white font-semibold py-2 sm:py-3 px-4 sm:px-6 rounded-lg sm:rounded-xl transition-all duration-200 transform hover:scale-105 shadow-md text-xs sm:text-sm"
                 >
-                  {isLoading ? '🔄 Processing...' : '💾 Record Return'}
+                  {isLoading ? (editingReturn ? '🔄 Updating...' : '🔄 Processing...') : (editingReturn ? '💾 Update Return' : '💾 Record Return')}
                 </button>
+                {editingReturn && (
+                  <button
+                    onClick={() => {
+                      setEditingReturn(null);
+                      setReturnItems([{ productId: '', quantity: 1, discount: 0 }]);
+                      setSelectedReturnCompany('');
+                      setSelectedInvoice('');
+                    }}
+                    className="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-semibold py-2 sm:py-3 px-4 sm:px-6 rounded-lg sm:rounded-xl transition-all duration-200 transform hover:scale-105 shadow-md text-xs sm:text-sm"
+                  >
+                    Cancel
+                  </button>
+                )}
                 <button
                   onClick={generateReturnReceiptPDF}
-                  disabled={isLoading}
+                  disabled={isLoading || !selectedReturnCompany}
                   className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-2 sm:py-3 px-4 sm:px-6 rounded-lg sm:rounded-xl transition-all duration-200 transform hover:scale-105 shadow-md text-xs sm:text-sm"
                 >
                   📄 Generate Receipt
                 </button>
               </div>
             </div>
+
+            {allReturnsHistory.length > 0 && (
+              <div className="bg-white p-4 sm:p-6 rounded-xl sm:rounded-2xl shadow-sm border border-gray-100">
+                <h3 className="text-xl sm:text-2xl font-bold text-gray-800 mb-4 sm:mb-6">All Returns History</h3>
+                <div className="overflow-x-auto rounded-2xl border border-gray-200">
+                  <table className="min-w-full">
+                    <thead>
+                      <tr className="bg-gradient-to-r from-teal-600 to-blue-600 text-white">
+                        <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Date</th>
+                        <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Company</th>
+                        <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Product</th>
+                        <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Qty</th>
+                        <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Price</th>
+                        <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Total</th>
+                        <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {allReturnsHistory.map((ret) => (
+                        <tr key={ret.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-gray-900">
+                            {new Date(ret.return_date).toLocaleDateString('en-IN')}
+                          </td>
+                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600">{ret.companies.name}</td>
+                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600">{ret.products?.name}</td>
+                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600">{ret.quantity}</td>
+                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600">₹{ret.products?.price.toFixed(2)}</td>
+                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-semibold text-teal-600">₹{ret.total_price.toFixed(2)}</td>
+                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">
+                            <button
+                              onClick={() => handleEditReturn(ret)}
+                              className="text-blue-500 hover:text-blue-700 mr-2"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeleteReturn(ret.id)}
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
